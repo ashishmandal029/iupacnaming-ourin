@@ -1,0 +1,1472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Structure → Name</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --text:#e8ecf1; --muted:#8b93a1; --paper:#eef1f3; --grid:#d3dbe0;
+    --teal:#16b8a6; --amber:#f5a623; --coral:#ff6b5f; --violet:#9b7bff;
+    --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--ink);color:var(--text);font-family:'Inter',sans-serif;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%;}
+  .app{display:flex;flex-direction:column;height:100vh;height:100dvh;padding-left:var(--safe-l);padding-right:var(--safe-r);}
+  ::selection{background:var(--teal);color:#04231f;}
+
+  header{padding:calc(14px + var(--safe-t)) 18px 12px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;background:linear-gradient(180deg,#14161c,var(--ink));}
+  header h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;margin:0;background:linear-gradient(90deg,var(--text),var(--teal));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  header .tag{font-size:11.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+  header .spacer{flex:1;}
+  header .badge{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--amber);border:1px solid #4a3a15;background:#241c0c;padding:3px 8px;border-radius:999px;letter-spacing:.04em;}
+
+  .toolbar{display:flex;gap:8px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:nowrap;align-items:center;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .toolbar::-webkit-scrollbar{display:none;}
+  .toolbar.wrap{flex-wrap:wrap;overflow:visible;}
+  .grp{display:flex;align-items:center;gap:5px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:4px 7px;flex:0 0 auto;}
+  .grp label{font-size:10.5px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:0.05em;margin-right:1px;white-space:nowrap;}
+  button, select{font-family:'Inter',sans-serif;font-size:13px;font-weight:500;background:transparent;color:var(--text);border:1px solid transparent;border-radius:7px;padding:7px 10px;cursor:pointer;transition:all .12s ease;touch-action:manipulation;white-space:nowrap;min-height:34px;}
+  button:active{transform:scale(0.96);}
+  button:hover{background:#2a3038;}
+  button.active{background:var(--teal);color:#04231f;font-weight:700;}
+  button:focus-visible, select:focus-visible{outline:2px solid var(--teal);outline-offset:1px;}
+  button:disabled{opacity:.35;cursor:not-allowed;}
+  button:disabled:active{transform:none;}
+  select{background:#12151b;border:1px solid var(--line);}
+  select:focus{outline:none;}
+  .danger:hover{background:var(--coral);color:#2a0b08;}
+  .primary{background:var(--amber);color:#2b1900;font-weight:700;}
+  .primary:hover{background:#ffb43d;}
+  .ghost{color:var(--muted);}
+  .grp.groups{background:linear-gradient(135deg,#1c1420,#171a21);border-color:#3a2a45;}
+  .grp.groups label{color:var(--violet);}
+  .grp.groups button{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px;color:var(--violet);}
+  .grp.groups button:hover{background:#2e2038;}
+
+  .stage{flex:1;position:relative;overflow:hidden;background:var(--paper);touch-action:none;min-height:0;}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none;}
+
+  .hint{position:absolute;top:12px;left:14px;right:14px;font-size:11.5px;color:#5a6470;background:#ffffffcc;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);padding:7px 10px;border-radius:8px;font-family:'JetBrains Mono',monospace;pointer-events:none;line-height:1.5;transition:opacity .2s ease;}
+  .hint.dim{opacity:0.45;}
+
+  .toast{position:absolute;bottom:14px;left:50%;transform:translateX(-50%) translateY(8px);background:#0c0e12;border:1px solid var(--teal);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:8px 14px;border-radius:8px;opacity:0;pointer-events:none;transition:all .18s ease;z-index:30;white-space:nowrap;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .popup{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;gap:4px;flex-wrap:wrap;max-width:220px;box-shadow:0 10px 30px rgba(0,0,0,.4);z-index:20;}
+  .popup button{padding:8px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;min-height:auto;}
+
+  .readout{border-top:1px solid var(--line);background:linear-gradient(180deg,#12151b,#0c0e12);padding:14px 18px calc(16px + var(--safe-b));min-height:70px;position:relative;}
+  .readout .row1{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .readout .eyebrow{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--teal);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;}
+  .readout .name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;color:var(--text);letter-spacing:0.02em;word-break:break-word;}
+  .readout .note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.55;max-width:820px;}
+  .readout .empty{color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13.5px;}
+  .readout .formula{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--amber);white-space:nowrap;padding-top:2px;}
+  .readout .formula sub{font-size:10px;}
+  .copyBtn{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;flex:0 0 auto;min-height:auto;}
+  .copyBtn:hover{background:#2a3038;color:var(--text);}
+
+  @media (max-width:520px){
+    header h1{font-size:17px;}
+    header .tag{display:none;}
+    .readout .name{font-size:17px;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>Structure → Name</h1>
+    <span class="tag">draw a skeletal structure · get a best-effort IUPAC name</span>
+    <span class="spacer"></span>
+    <span class="badge" id="saveBadge">● saved</span>
+  </header>
+
+  <div class="toolbar">
+    <div class="grp">
+      <label>Atom</label>
+      <select id="elementPicker">
+        <option value="C" selected>C</option>
+        <option value="H">H</option>
+        <option value="O">O</option>
+        <option value="N">N</option>
+        <option value="S">S</option>
+        <option value="F">F</option>
+        <option value="Cl">Cl</option>
+        <option value="Br">Br</option>
+        <option value="I">I</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label>Bond</label>
+      <button data-order="1" class="orderBtn active">—</button>
+      <button data-order="2" class="orderBtn">=</button>
+      <button data-order="3" class="orderBtn">≡</button>
+    </div>
+    <div class="grp"><button id="benzeneBtn">⬡ Benzene</button></div>
+    <div class="grp">
+      <button id="deselectBtn" class="ghost">✕ Deselect</button>
+      <button id="deleteBtn">🗑 Delete</button>
+      <button id="undoBtn" class="ghost">↺ Undo</button>
+      <button id="clearBtn" class="danger">Clear</button>
+    </div>
+    <div class="grp">
+      <label>Presets</label>
+      <select id="presetPicker">
+        <option value="" selected disabled>Load…</option>
+        <option value="ethanol">Ethanol</option>
+        <option value="aceticAcid">Acetic acid</option>
+        <option value="acetone">Acetone</option>
+        <option value="benzaldehyde">Benzaldehyde</option>
+        <option value="aniline">Aniline</option>
+        <option value="acetonitrile">Acetonitrile</option>
+      </select>
+    </div>
+    <div class="grp"><button id="nameBtn" class="primary">Name it →</button></div>
+  </div>
+
+  <div class="toolbar wrap">
+    <div class="grp groups">
+      <label>Group ⚡</label>
+      <button data-group="OH" title="Hydroxyl">−OH</button>
+      <button data-group="NH2" title="Amino">−NH₂</button>
+      <button data-group="SH" title="Sulfanyl">−SH</button>
+      <button data-group="CHO" title="Aldehyde">−CHO</button>
+      <button data-group="COOH" title="Carboxylic acid">−COOH</button>
+      <button data-group="CN" title="Nitrile">−C≡N</button>
+    </div>
+    <span class="tag" id="groupHint" style="padding:2px 4px;">select a carbon, then tap a group to attach it</span>
+  </div>
+
+  <div class="stage">
+    <canvas id="canvas"></canvas>
+    <div class="hint" id="hint">Tap empty space → new atom (chains automatically if one is selected). Tap an atom → select it (glows amber); tap a second atom → bonds them. Tap the same atom twice → change its element. Tap a bond → cycle single/double/triple.</div>
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <div class="readout">
+    <div class="row1">
+      <div>
+        <div class="eyebrow">Readout</div>
+        <div id="nameOut" class="empty">Draw a structure, then press "Name it →"</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <div class="formula" id="formulaOut"></div>
+        <button class="copyBtn" id="copyBtn" style="display:none;">⧉ Copy name</button>
+      </div>
+    </div>
+    <div class="note" id="noteOut"></div>
+  </div>
+
+</div>
+
+<script>
+/* ============================== STATE ============================== */
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let atoms = [];   // {id, el, x, y}
+let bonds = [];   // {id, a, b, order}
+let nextAtomId = 1;
+let nextBondId = 1;
+
+let placeElement = 'C';
+let placeOrder = 1;
+let mode = 'draw'; // 'draw' | 'delete'
+let selectedAtom = null;   // atom waiting for a second tap to bond
+let dragCandidate = null;  // atom under pointerdown, for mouse-style drag-to-bond
+let dragPos = null;
+let downInfo = null;
+let popupEl = null;
+
+const ELCOLOR = { C:'#232730', O:'#e0483e', N:'#3b6fd6', F:'#3fae5a', Cl:'#2fa86a', Br:'#b5651d', I:'#7a3fae', S:'#c9a227', H:'#7b8494' };
+const VALENCE = { C:4, N:3, O:2, S:2, F:1, Cl:1, Br:1, I:1, H:1 };
+
+function resizeCanvas(){
+  const stage = canvas.parentElement;
+  canvas.width = stage.clientWidth * devicePixelRatio;
+  canvas.height = stage.clientHeight * devicePixelRatio;
+  canvas.style.width = stage.clientWidth+'px';
+  canvas.style.height = stage.clientHeight+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  render();
+}
+window.addEventListener('resize', resizeCanvas);
+
+/* ============================== RENDER ============================== */
+function render(){
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const hintEl = document.getElementById('hint');
+  if(hintEl) hintEl.classList.toggle('dim', atoms.length>0);
+  const gh = document.getElementById('groupHint');
+  if(gh){
+    gh.textContent = (selectedAtom && selectedAtom.el==='C')
+      ? 'will attach to the selected (amber) carbon'
+      : 'select a carbon first, or tap a group to start a fresh fragment';
+  }
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle = '#d3dbe0';
+  ctx.lineWidth = 1;
+  const gap = 28;
+  for(let x=0;x<w;x+=gap){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
+  for(let y=0;y<h;y+=gap){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+
+  bonds.forEach(b=>{
+    const a1 = atoms.find(a=>a.id===b.a), a2 = atoms.find(a=>a.id===b.b);
+    if(!a1||!a2) return;
+    drawBond(a1,a2,b.order);
+  });
+
+  if(dragCandidate && dragPos){
+    ctx.strokeStyle = '#f5a623'; ctx.lineWidth = 2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(dragCandidate.x, dragCandidate.y); ctx.lineTo(dragPos.x, dragPos.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  atoms.forEach(a=>{
+    const isC = a.el === 'C';
+    if(selectedAtom && selectedAtom.id===a.id){
+      ctx.beginPath(); ctx.arc(a.x,a.y, isC?11:18, 0, Math.PI*2);
+      ctx.strokeStyle = '#f5a623'; ctx.lineWidth = 2.5; ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(a.x,a.y, isC?4:12, 0, Math.PI*2);
+    ctx.fillStyle = isC ? '#232730' : '#eef1f3';
+    ctx.fill();
+    if(!isC){
+      ctx.strokeStyle = ELCOLOR[a.el] || '#232730'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = ELCOLOR[a.el] || '#232730';
+      ctx.font = '700 13px "JetBrains Mono", monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(a.el, a.x, a.y+1);
+    }
+  });
+}
+
+function drawBond(a1,a2,order){
+  const dx = a2.x-a1.x, dy = a2.y-a1.y;
+  const len = Math.hypot(dx,dy) || 1;
+  const nx = -dy/len, ny = dx/len;
+  const trim = (a)=> a.el==='C' ? 0 : 12;
+  const t1 = trim(a1), t2 = trim(a2);
+  const ux = dx/len, uy = dy/len;
+  const p1 = {x:a1.x+ux*t1, y:a1.y+uy*t1};
+  const p2 = {x:a2.x-ux*t2, y:a2.y-uy*t2};
+  ctx.strokeStyle = '#1a1d24'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+  if(order===1){ line(p1,p2); }
+  else if(order===2){
+    const off=3.2;
+    line({x:p1.x+nx*off,y:p1.y+ny*off},{x:p2.x+nx*off,y:p2.y+ny*off});
+    line({x:p1.x-nx*off,y:p1.y-ny*off},{x:p2.x-nx*off,y:p2.y-ny*off});
+  } else {
+    const off=4.4;
+    line(p1,p2);
+    line({x:p1.x+nx*off,y:p1.y+ny*off},{x:p2.x+nx*off,y:p2.y+ny*off});
+    line({x:p1.x-nx*off,y:p1.y-ny*off},{x:p2.x-nx*off,y:p2.y-ny*off});
+  }
+}
+function line(p1,p2){ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+
+/* ============================== HIT TESTING ============================== */
+function atomAt(x,y){ return atoms.find(a=>Math.hypot(a.x-x,a.y-y) < 16); }
+function bondAt(x,y){
+  return bonds.find(b=>{
+    const a1=atoms.find(a=>a.id===b.a), a2=atoms.find(a=>a.id===b.b);
+    if(!a1||!a2) return false;
+    return distToSeg(x,y,a1.x,a1.y,a2.x,a2.y) < 9;
+  });
+}
+function distToSeg(px,py,x1,y1,x2,y2){
+  const dx=x2-x1, dy=y2-y1;
+  const len2 = dx*dx+dy*dy || 1;
+  let t = ((px-x1)*dx+(py-y1)*dy)/len2;
+  t = Math.max(0,Math.min(1,t));
+  const cx=x1+t*dx, cy=y1+t*dy;
+  return Math.hypot(px-cx,py-cy);
+}
+
+/* ============================== UNDO HISTORY ============================== */
+let history = [];
+const HISTORY_LIMIT = 60;
+function pushHistory(){
+  try{
+    history.push(JSON.stringify({atoms, bonds, nextAtomId, nextBondId}));
+    if(history.length>HISTORY_LIMIT) history.shift();
+  }catch(err){ /* stay stable even if snapshotting fails */ }
+  updateUndoBtn();
+}
+function undo(){
+  if(!history.length) return;
+  try{
+    const prev = JSON.parse(history.pop());
+    atoms = prev.atoms; bonds = prev.bonds; nextAtomId = prev.nextAtomId; nextBondId = prev.nextBondId;
+  }catch(err){ /* corrupted snapshot — skip rather than crash */ }
+  selectedAtom = null; closePopup();
+  updateUndoBtn();
+  render(); scheduleSave();
+}
+function updateUndoBtn(){
+  const btn = document.getElementById('undoBtn');
+  if(btn) btn.disabled = history.length===0;
+}
+
+/* ============================== MUTATIONS ============================== */
+function addAtom(x,y,el){ const a = {id:nextAtomId++, el, x, y}; atoms.push(a); return a; }
+function addOrToggleBond(id1,id2,order){
+  if(id1===id2) return;
+  let b = bonds.find(bb=> (bb.a===id1&&bb.b===id2)||(bb.a===id2&&bb.b===id1));
+  if(b){ b.order = order; } else { bonds.push({id:nextBondId++, a:id1, b:id2, order}); }
+}
+function cycleBond(b){ b.order = b.order===3 ? 1 : b.order+1; }
+function deleteAtom(a){
+  atoms = atoms.filter(x=>x.id!==a.id);
+  bonds = bonds.filter(b=> b.a!==a.id && b.b!==a.id);
+  if(selectedAtom && selectedAtom.id===a.id) selectedAtom=null;
+}
+function deleteBond(b){ bonds = bonds.filter(x=>x.id!==b.id); }
+function insertBenzene(cx,cy){
+  const R = 42; const ids = [];
+  for(let i=0;i<6;i++){
+    const ang = -Math.PI/2 + i*Math.PI/3;
+    const a = addAtom(cx+R*Math.cos(ang), cy+R*Math.sin(ang), 'C');
+    ids.push(a.id);
+  }
+  for(let i=0;i<6;i++){ addOrToggleBond(ids[i], ids[(i+1)%6], (i%2===0)?2:1); }
+}
+
+/* ---- functional-group quick insert ---- */
+function bondedCount(atom){ return bonds.filter(b=>b.a===atom.id||b.b===atom.id).length; }
+const FAN_ANGLES = [-40, 40, -140, 140, -90, 90, 0, 180];
+function fanPos(atom, dist){
+  dist = dist || 46;
+  const idx = bondedCount(atom);
+  const ang = FAN_ANGLES[idx % FAN_ANGLES.length] * Math.PI/180;
+  const ux=0, uy=-1;
+  const rx = ux*Math.cos(ang) - uy*Math.sin(ang);
+  const ry = ux*Math.sin(ang) + uy*Math.cos(ang);
+  return {x: atom.x + rx*dist, y: atom.y + ry*dist};
+}
+function addBondedAtom(fromAtom, pos, el, order){
+  const a = addAtom(pos.x, pos.y, el);
+  addOrToggleBond(fromAtom.id, a.id, order);
+  return a;
+}
+function ensureAttachAtom(){
+  if(selectedAtom && selectedAtom.el==='C') return selectedAtom;
+  const stage = canvas.parentElement;
+  const cx = (stage.clientWidth||300)/2, cy = (stage.clientHeight||300)/2;
+  const jitter = atoms.length ? 30 : 0;
+  const x = cx + (jitter ? (Math.random()*jitter*2-jitter) : 0);
+  const y = cy + (jitter ? (Math.random()*jitter*2-jitter) : 0);
+  return addAtom(x, y, 'C');
+}
+const GROUP_LABELS = {OH:'−OH (hydroxyl)', NH2:'−NH₂ (amino)', SH:'−SH (sulfanyl)', CHO:'−CHO (aldehyde)', COOH:'−COOH (carboxylic acid)', CN:'−C≡N (nitrile)'};
+function insertGroup(type){
+  closePopup();
+  pushHistory();
+  const target = ensureAttachAtom();
+  if(type==='OH'){ addBondedAtom(target, fanPos(target), 'O', 1); }
+  else if(type==='NH2'){ addBondedAtom(target, fanPos(target), 'N', 1); }
+  else if(type==='SH'){ addBondedAtom(target, fanPos(target), 'S', 1); }
+  else if(type==='CHO'){
+    const c = addBondedAtom(target, fanPos(target), 'C', 1);
+    addBondedAtom(c, fanPos(c), 'O', 2);
+  } else if(type==='COOH'){
+    const c = addBondedAtom(target, fanPos(target), 'C', 1);
+    addBondedAtom(c, fanPos(c), 'O', 2);
+    addBondedAtom(c, fanPos(c), 'O', 1);
+  } else if(type==='CN'){
+    const c = addBondedAtom(target, fanPos(target), 'C', 1);
+    addBondedAtom(c, fanPos(c), 'N', 3);
+  } else { history.pop(); updateUndoBtn(); return; }
+  selectedAtom = null;
+  render(); scheduleSave();
+  showToast(GROUP_LABELS[type] + ' added');
+}
+
+/* ============================== INTERACTION (Pointer Events: mouse + touch + pen) ============================== */
+function closePopup(){ if(popupEl){popupEl.remove(); popupEl=null;} }
+function getXY(e){
+  const rect = canvas.getBoundingClientRect();
+  return {x: e.clientX-rect.left, y: e.clientY-rect.top};
+}
+
+canvas.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+  closePopup();
+  const {x,y} = getXY(e);
+  const hitAtom = atomAt(x,y);
+  const hitBond = !hitAtom ? bondAt(x,y) : null;
+  downInfo = {x,y,hitAtom,hitBond};
+  dragCandidate = hitAtom || null;
+  dragPos = {x,y};
+});
+
+canvas.addEventListener('pointermove', e=>{
+  if(!downInfo || !dragCandidate) return;
+  e.preventDefault();
+  dragPos = getXY(e);
+  render();
+});
+
+canvas.addEventListener('pointerup', e=>{
+  if(!downInfo) return;
+  e.preventDefault();
+  const {x,y} = getXY(e);
+  const moved = Math.hypot(x-downInfo.x, y-downInfo.y) > 12;
+
+  if(mode==='delete'){
+    if(downInfo.hitAtom){ pushHistory(); deleteAtom(downInfo.hitAtom); }
+    else if(downInfo.hitBond){ pushHistory(); deleteBond(downInfo.hitBond); }
+    resetPointerState(); render(); scheduleSave(); return;
+  }
+
+  if(window.__benzeneMode){
+    if(!downInfo.hitAtom && !downInfo.hitBond){
+      pushHistory();
+      insertBenzene(x,y);
+      window.__benzeneMode = false;
+      document.getElementById('benzeneBtn').classList.remove('active');
+    }
+    resetPointerState(); render(); scheduleSave(); return;
+  }
+
+  if(downInfo.hitBond && !moved){
+    pushHistory();
+    cycleBond(downInfo.hitBond);
+    resetPointerState(); render(); scheduleSave(); return;
+  }
+
+  if(downInfo.hitAtom){
+    if(moved){
+      pushHistory();
+      let target = atomAt(x,y);
+      if(target && target.id===downInfo.hitAtom.id) target = null;
+      if(!target) target = addAtom(x,y, placeElement);
+      addOrToggleBond(downInfo.hitAtom.id, target.id, placeOrder);
+      selectedAtom = null;
+    } else {
+      if(selectedAtom===null){
+        selectedAtom = downInfo.hitAtom;
+      } else if(selectedAtom.id===downInfo.hitAtom.id){
+        openElementPopup(downInfo.hitAtom, e.clientX, e.clientY);
+        selectedAtom = null;
+      } else {
+        pushHistory();
+        addOrToggleBond(selectedAtom.id, downInfo.hitAtom.id, placeOrder);
+        selectedAtom = null;
+      }
+    }
+  } else {
+    pushHistory();
+    if(selectedAtom){
+      const newAtom = addAtom(x,y,placeElement);
+      addOrToggleBond(selectedAtom.id, newAtom.id, placeOrder);
+      selectedAtom = newAtom;
+    } else {
+      addAtom(x,y,placeElement);
+    }
+  }
+  resetPointerState();
+  render(); scheduleSave();
+});
+
+canvas.addEventListener('pointercancel', ()=>{ resetPointerState(); render(); });
+
+function resetPointerState(){ downInfo=null; dragCandidate=null; dragPos=null; }
+
+function openElementPopup(atom, clientX, clientY){
+  closePopup();
+  const opts = ['C','H','O','N','S','F','Cl','Br','I'];
+  const div = document.createElement('div');
+  div.className = 'popup';
+  const stageRect = canvas.parentElement.getBoundingClientRect();
+  let left = clientX - stageRect.left + 10;
+  let top = clientY - stageRect.top - 10;
+  left = Math.min(left, stageRect.width - 190);
+  div.style.left = Math.max(6,left) + 'px';
+  div.style.top = Math.max(6,top) + 'px';
+  opts.forEach(el=>{
+    const btn = document.createElement('button');
+    btn.textContent = el;
+    btn.onclick = ()=>{ pushHistory(); atom.el = el; closePopup(); render(); scheduleSave(); };
+    div.appendChild(btn);
+  });
+  canvas.parentElement.appendChild(div);
+  popupEl = div;
+}
+
+/* ============================== TOOLBAR ============================== */
+document.getElementById('elementPicker').addEventListener('change', e=>{ placeElement = e.target.value; });
+document.querySelectorAll('.orderBtn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.orderBtn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    placeOrder = parseInt(btn.dataset.order);
+  });
+});
+document.getElementById('benzeneBtn').addEventListener('click', (e)=>{
+  window.__benzeneMode = !window.__benzeneMode;
+  e.target.classList.toggle('active', window.__benzeneMode);
+  selectedAtom = null; render();
+});
+document.getElementById('deselectBtn').addEventListener('click', ()=>{ selectedAtom=null; render(); });
+document.getElementById('deleteBtn').addEventListener('click', (e)=>{
+  mode = mode==='delete' ? 'draw' : 'delete';
+  e.target.classList.toggle('active', mode==='delete');
+  selectedAtom = null; render();
+});
+document.getElementById('undoBtn').addEventListener('click', ()=>{ undo(); resetReadout(); });
+document.addEventListener('keydown', e=>{
+  const tag = (e.target && e.target.tagName) || '';
+  if(tag==='INPUT' || tag==='SELECT' || tag==='TEXTAREA') return;
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); resetReadout(); }
+});
+document.querySelectorAll('[data-group]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{ insertGroup(btn.dataset.group); });
+});
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if(!atoms.length && !bonds.length) return;
+  pushHistory();
+  atoms=[]; bonds=[]; nextAtomId=1; nextBondId=1; selectedAtom=null;
+  resetReadout();
+  render(); scheduleSave();
+});
+document.getElementById('nameBtn').addEventListener('click', ()=>{ runNaming(); });
+document.getElementById('copyBtn').addEventListener('click', async ()=>{
+  const text = document.getElementById('nameOut').textContent;
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast('Name copied');
+  }catch(err){ showToast('Copy failed — select text manually'); }
+});
+document.getElementById('presetPicker').addEventListener('change', e=>{
+  const val = e.target.value;
+  if(val && PRESETS[val]) loadPreset(val);
+  e.target.value = '';
+});
+
+function resetReadout(){
+  const out = document.getElementById('nameOut');
+  out.textContent = 'Draw a structure, then press "Name it →"';
+  out.classList.add('empty');
+  document.getElementById('noteOut').textContent = '';
+  document.getElementById('formulaOut').textContent = '';
+  document.getElementById('copyBtn').style.display = 'none';
+}
+function runNaming(){
+  const result = nameMolecule(atoms, bonds);
+  const out = document.getElementById('nameOut');
+  out.classList.remove('empty');
+  out.textContent = result.name;
+  document.getElementById('noteOut').textContent = result.note || '';
+  const f = molecularFormula(atoms, bonds);
+  document.getElementById('formulaOut').innerHTML = f ? formulaHTML(f) : '';
+  document.getElementById('copyBtn').style.display = atoms.length ? 'inline-flex' : 'none';
+}
+function formulaHTML(f){
+  return f.replace(/(\d+)/g, '<sub>$1</sub>');
+}
+
+let toastTimer=null;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 1600);
+}
+
+/* ============================== MOLECULAR FORMULA (Hill system) ============================== */
+function molecularFormula(atoms, bonds){
+  if(!atoms.length) return '';
+  const adj = adjacency(atoms, bonds);
+  const counts = {};
+  let hCount = 0;
+  // Nitro's terminal -O (single-bonded partner of the N=O) carries a formal negative
+  // charge in the drawn resonance form, not an implicit H — exclude it from the H fill-in.
+  const noImplicitH = new Set();
+  atoms.forEach(a=>{
+    if(a.el==='N' && isNitroN(atoms,adj,a.id)){
+      const termO = adj[a.id].find(x=> x.order===1 && atomById(atoms,x.id).el==='O');
+      if(termO) noImplicitH.add(termO.id);
+    }
+  });
+  atoms.forEach(a=>{
+    if(a.el==='H'){ hCount++; return; }
+    counts[a.el] = (counts[a.el]||0)+1;
+    if(noImplicitH.has(a.id)) return;
+    const used = adj[a.id].reduce((s,n)=> s+n.order, 0);
+    const val = VALENCE[a.el] || 4;
+    hCount += Math.max(0, val-used);
+  });
+  let out = '';
+  if(counts.C){ out += 'C' + (counts.C>1?counts.C:''); delete counts.C; }
+  if(hCount){ out += 'H' + (hCount>1?hCount:''); }
+  Object.keys(counts).sort().forEach(el=>{ out += el + (counts[el]>1?counts[el]:''); });
+  return out;
+}
+
+/* ============================== PRESET MOLECULES ============================== */
+const PRESETS = {
+  ethanol: {
+    atoms:[{el:'C',x:0,y:0},{el:'C',x:1,y:0},{el:'O',x:1.8,y:-0.6}],
+    bonds:[[0,1,1],[1,2,1]]
+  },
+  aceticAcid: {
+    atoms:[{el:'C',x:0,y:0},{el:'C',x:1,y:0},{el:'O',x:1.6,y:-0.85},{el:'O',x:1.6,y:0.85}],
+    bonds:[[0,1,1],[1,2,2],[1,3,1]]
+  },
+  acetone: {
+    atoms:[{el:'C',x:0,y:0},{el:'C',x:1,y:0},{el:'O',x:1,y:-1},{el:'C',x:2,y:0.6}],
+    bonds:[[0,1,1],[1,2,2],[1,3,1]]
+  },
+  benzaldehyde: {
+    atoms:[
+      {el:'C',x:0,y:-1},{el:'C',x:0.87,y:-0.5},{el:'C',x:0.87,y:0.5},
+      {el:'C',x:0,y:1},{el:'C',x:-0.87,y:0.5},{el:'C',x:-0.87,y:-0.5},
+      {el:'C',x:0,y:-2},{el:'O',x:0.87,y:-2.5}
+    ],
+    bonds:[[0,1,2],[1,2,1],[2,3,2],[3,4,1],[4,5,2],[5,0,1],[0,6,1],[6,7,2]]
+  },
+  aniline: {
+    atoms:[
+      {el:'C',x:0,y:-1},{el:'C',x:0.87,y:-0.5},{el:'C',x:0.87,y:0.5},
+      {el:'C',x:0,y:1},{el:'C',x:-0.87,y:0.5},{el:'C',x:-0.87,y:-0.5},
+      {el:'N',x:0,y:-2}
+    ],
+    bonds:[[0,1,2],[1,2,1],[2,3,2],[3,4,1],[4,5,2],[5,0,1],[0,6,1]]
+  },
+  acetonitrile: {
+    atoms:[{el:'C',x:0,y:0},{el:'C',x:1,y:0},{el:'N',x:2,y:0}],
+    bonds:[[0,1,1],[1,2,3]]
+  }
+};
+function loadPreset(key){
+  const p = PRESETS[key];
+  if(!p) return;
+  pushHistory();
+  const stage = canvas.parentElement;
+  const cx = (stage.clientWidth||320)/2, cy = (stage.clientHeight||320)/2;
+  const scale = 60;
+  atoms = []; bonds = []; nextAtomId = 1; nextBondId = 1; selectedAtom = null;
+  const idMap = p.atoms.map(a=> addAtom(cx + a.x*scale, cy + a.y*scale, a.el).id);
+  p.bonds.forEach(([i,j,order])=> addOrToggleBond(idMap[i], idMap[j], order));
+  window.__benzeneMode = false;
+  document.getElementById('benzeneBtn').classList.remove('active');
+  mode = 'draw';
+  document.getElementById('deleteBtn').classList.remove('active');
+  render(); scheduleSave();
+  runNaming();
+}
+
+/* ============================== NAMING ENGINE ============================== */
+const ALKANE = ['','meth','eth','prop','but','pent','hex','hept','oct','non','dec','undec','dodec'];
+const MULT = ['','','di','tri','tetra','penta','hexa','hepta','octa','nona','deca'];
+const SUBST_PREFIX = {F:'fluoro',Cl:'chloro',Br:'bromo',I:'iodo'};
+
+function adjacency(atoms,bonds){
+  const adj = {}; atoms.forEach(a=> adj[a.id] = []);
+  bonds.forEach(b=>{
+    if(adj[b.a]) adj[b.a].push({id:b.b, order:b.order, bond:b});
+    if(adj[b.b]) adj[b.b].push({id:b.a, order:b.order, bond:b});
+  });
+  return adj;
+}
+function atomById(atoms,id){ return atoms.find(a=>a.id===id); }
+
+function findRings(atoms,bonds,adj){
+  const visited = new Set(); const parent = {}; const rings = [];
+  function dfs(u, par){
+    visited.add(u);
+    for(const nb of adj[u]){
+      if(nb.id===par) continue;
+      if(visited.has(nb.id)){
+        const cyc = [u]; let cur = u; const seen = new Set([u]);
+        while(parent[cur] !== undefined && parent[cur] !== nb.id && !seen.has(parent[cur])){
+          cur = parent[cur]; cyc.push(cur); seen.add(cur);
+        }
+        if(parent[cur]===nb.id || cur===nb.id){ cyc.push(nb.id); rings.push(cyc); }
+      } else { parent[nb.id] = u; dfs(nb.id, u); }
+    }
+  }
+  atoms.forEach(a=>{ if(!visited.has(a.id)) dfs(a.id, null); });
+  const uniq = []; const seenSets = new Set();
+  rings.forEach(r=>{
+    const key = [...new Set(r)].sort((a,b)=>a-b).join(',');
+    if(r.length>=3 && !seenSets.has(key)){ seenSets.add(key); uniq.push([...new Set(r)]); }
+  });
+  return uniq;
+}
+
+function isBenzeneRing(ring, atoms, bonds){
+  if(ring.length!==6) return false;
+  if(!ring.every(id=> atomById(atoms,id).el==='C')) return false;
+  let dbl = 0;
+  for(let i=0;i<6;i++){
+    const a=ring[i], b=ring[(i+1)%6];
+    const bd = bonds.find(x=>(x.a===a&&x.b===b)||(x.a===b&&x.b===a));
+    if(bd && bd.order===2) dbl++;
+  }
+  return dbl===3;
+}
+
+/* Classify each carbon's carbonyl/nitrile-type functional group.
+   Two-pass: first collect each carbon's raw neighbor signals, then disambiguate
+   COOH vs ESTER vs ANHYDRIDE (all share the dblO+sglO pattern) and ACID_HALIDE
+   (previously mis-caught by the CHO fallback) using that lookup. */
+function classify(atoms,bonds,adj){
+  const raw = {};
+  atoms.forEach(a=>{
+    if(a.el!=='C') return;
+    const nbrs = adj[a.id];
+    raw[a.id] = {
+      dblO: nbrs.filter(n=> n.order===2 && atomById(atoms,n.id).el==='O'),
+      sglO: nbrs.filter(n=> n.order===1 && atomById(atoms,n.id).el==='O'),
+      sglN: nbrs.filter(n=> n.order===1 && atomById(atoms,n.id).el==='N'),
+      tripN: nbrs.filter(n=> n.order===3 && atomById(atoms,n.id).el==='N'),
+      hal: nbrs.filter(n=> n.order===1 && SUBST_PREFIX[atomById(atoms,n.id).el]),
+      carbonNbrs: nbrs.filter(n=> atomById(atoms,n.id).el==='C')
+    };
+  });
+  const hasCarbonylO = (cid)=> raw[cid] && raw[cid].dblO.length===1;
+
+  const info = {};
+  Object.keys(raw).forEach(k=>{
+    const cid = Number(k);
+    const r = raw[cid];
+    if(r.dblO.length===1 && r.sglO.length===1){
+      const oId = r.sglO[0].id;
+      const oDeg = adj[oId].length;
+      if(oDeg===1){
+        info[cid] = {type:'COOH', oId:r.dblO[0].id, ohId:oId};
+      } else {
+        const otherC = adj[oId].find(x=> x.id!==cid && atomById(atoms,x.id).el==='C');
+        if(otherC && hasCarbonylO(otherC.id)){
+          info[cid] = {type:'ANHYDRIDE', oId:r.dblO[0].id, bridgeO:oId, otherAcylC:otherC.id};
+        } else {
+          info[cid] = {type:'ESTER', oId:r.dblO[0].id, esterO:oId, rGroupC: otherC ? otherC.id : null};
+        }
+      }
+    } else if(r.dblO.length===1 && r.hal.length===1){
+      info[cid] = {type:'ACID_HALIDE', oId:r.dblO[0].id, halId:r.hal[0].id, haloEl: atomById(atoms,r.hal[0].id).el};
+    } else if(r.dblO.length===1 && r.sglN.length===1){
+      info[cid] = {type:'AMIDE', oId:r.dblO[0].id, nId:r.sglN[0].id};
+    } else if(r.tripN.length===1){
+      info[cid] = {type:'NITRILE', nId:r.tripN[0].id};
+    } else if(r.dblO.length===1 && r.carbonNbrs.length<=1){
+      info[cid] = {type:'CHO', oId:r.dblO[0].id};
+    } else if(r.dblO.length===1 && r.carbonNbrs.length===2){
+      info[cid] = {type:'KETONE', oId:r.dblO[0].id};
+    }
+  });
+  return info;
+}
+
+function isNitroN(atoms, adj, nId){
+  const n = atomById(atoms, nId);
+  if(!n || n.el!=='N') return false;
+  const nbrs = adj[nId];
+  const dblO = nbrs.filter(x=> x.order===2 && atomById(atoms,x.id).el==='O');
+  const sglO = nbrs.filter(x=> x.order===1 && atomById(atoms,x.id).el==='O' && adj[x.id].length===1);
+  return dblO.length===1 && sglO.length===1;
+}
+
+function alkylName(len){
+  if(len<=0) return '';
+  if(len===1) return 'methyl';
+  if(len===2) return 'ethyl';
+  if(len===3) return 'propyl';
+  return (ALKANE[len]||(len+'-carbon'))+'yl';
+}
+function alkoxyName(len){
+  const map = {1:'methoxy',2:'ethoxy',3:'propoxy',4:'butoxy'};
+  if(map[len]) return map[len];
+  return alkylName(len)+'oxy';
+}
+
+function farthest(adj, start, blocked){
+  const visited = new Set([start]); const parent = {};
+  const queue = [[start,0]]; let best = {node:start, dist:0};
+  while(queue.length){
+    const [u,d] = queue.shift();
+    if(d>best.dist) best = {node:u, dist:d};
+    adj[u].forEach(n=>{
+      if(blocked.has(n.id) || visited.has(n.id)) return;
+      visited.add(n.id); parent[n.id]=u; queue.push([n.id,d+1]);
+    });
+  }
+  const path = [best.node]; let cur = best.node;
+  while(parent[cur]!==undefined){ cur=parent[cur]; path.unshift(cur); }
+  return {node:best.node, dist:best.dist, path};
+}
+
+/* Longest chain that passes THROUGH a given carbon (handles interior groups like ketones,
+   as well as terminal groups like COOH/CHO/nitrile which just have a single branch). */
+function chainThroughCarbon(cAdj, carbonId){
+  const nbrs = cAdj[carbonId] || [];
+  if(nbrs.length===0) return {path:[carbonId]};
+  const branches = nbrs.map(nb => farthest(cAdj, nb.id, new Set([carbonId])));
+  branches.sort((a,b)=> b.dist - a.dist);
+  if(branches.length===1){
+    return {path: [carbonId, ...branches[0].path]};
+  }
+  const b1 = branches[0], b2 = branches[1];
+  return {path: [...[...b1.path].reverse(), carbonId, ...b2.path]};
+}
+
+/* Non-carbonyl substituents hanging off a chain carbon: -OH, ether -O-R, -NH2/-NR2, -NO2, halogens, -SH */
+function substituentsOnCarbon(atoms,adj,cAdj,carbonId,skipIds,esterOIds){
+  const res = {oh:false, sh:false, amino:false, nitro:false, halogens:[], alkoxy:[]};
+  adj[carbonId].forEach(n=>{
+    if(skipIds.has(n.id)) return;
+    const at = atomById(atoms,n.id);
+    if(at.el==='O' && n.order===1){
+      const deg = adj[n.id].length;
+      if(deg===1){ res.oh = true; }
+      else if(deg===2 && !esterOIds.has(n.id)){
+        const otherC = adj[n.id].find(x=> x.id!==carbonId && atomById(atoms,x.id).el==='C');
+        if(otherC){
+          const far = farthest(cAdj, otherC.id, new Set());
+          res.alkoxy.push(alkoxyName(far.dist+1));
+        }
+      }
+    }
+    if(at.el==='N' && n.order===1){
+      if(isNitroN(atoms,adj,n.id)) res.nitro = true;
+      else res.amino = true;
+    }
+    if(at.el==='S' && n.order===1 && adj[n.id].length===1){ res.sh = true; }
+    if(SUBST_PREFIX[at.el] && adj[n.id].length===1) res.halogens.push(at.el);
+  });
+  return res;
+}
+
+function buildSuffix(locs, word, chainLen, alwaysNoLocant){
+  const sorted = [...locs].sort((a,b)=>a-b);
+  const mult = sorted.length>1 ? (MULT[sorted.length]||'') : '';
+  if(alwaysNoLocant){ return `${mult}${word}`; }
+  const needLocants = sorted.length>1 || chainLen>2;
+  return needLocants ? `-${sorted.join(',')}-${mult}${word}` : `${mult}${word}`;
+}
+function startsWithVowel(str){ const m = str.match(/[a-zA-Z]/); return m ? 'aeiou'.includes(m[0].toLowerCase()) : false; }
+
+/* Shared by acyclic chains and rings: "hex" + unsaturation locants -> "hexane" / "hex-1-ene" / "hexa-1,3-diene" */
+function buildUnsaturatedStem(len, dbl, trp){
+  const base = ALKANE[len] || `${len}carbon`;
+  if(dbl.length || trp.length){
+    const unsatParts = [];
+    if(dbl.length) unsatParts.push(`${dbl.join(',')}-${MULT[dbl.length]||''}ene`);
+    if(trp.length) unsatParts.push(`${trp.join(',')}-${MULT[trp.length]||''}yne`);
+    const needsA = dbl.length>1 || trp.length>1;
+    return base + (needsA?'a':'') + '-' + unsatParts.join('-');
+  }
+  return base + 'ane';
+}
+
+/* ============================== AROMATIC (benzene) NAMING ============================== */
+function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
+  const ringSet = new Set(ring);
+  const subs = [];
+  const posOf = {}; ring.forEach((id,i)=> posOf[id]=i);
+  const FUNC_LABEL = {COOH:'__COOH__', ESTER:'__ESTER__', CHO:'__CHO__', AMIDE:'__AMIDE__', NITRILE:'__NITRILE__', ACID_HALIDE:'__ACIDHALIDE__', KETONE:'__KETONE__'};
+
+  ring.forEach(rid=>{
+    adj[rid].forEach(n=>{
+      if(ringSet.has(n.id)) return;
+      const at = atomById(atoms,n.id);
+      let label = null, rGroupC = null, haloEl = null;
+      if(SUBST_PREFIX[at.el]) label = SUBST_PREFIX[at.el];
+      else if(at.el==='O' && adj[n.id].length===1) label = 'hydroxy';
+      else if(at.el==='S' && adj[n.id].length===1) label = 'sulfanyl';
+      else if(at.el==='N' && n.order===1) label = isNitroN(atoms,adj,n.id) ? 'nitro' : 'amino';
+      else if(at.el==='C'){
+        const fi = funcInfo[n.id];
+        if(fi && FUNC_LABEL[fi.type]){
+          label = FUNC_LABEL[fi.type];
+          if(fi.type==='ESTER') rGroupC = fi.rGroupC;
+          if(fi.type==='ACID_HALIDE') haloEl = fi.haloEl;
+        } else {
+          const far = farthest(cAdj, n.id, new Set([rid]));
+          label = alkylName(far.dist+1);
+        }
+      }
+      if(label) subs.push({pos:posOf[rid], ringAtomId:rid, label, atomId:n.id, rGroupC, haloEl});
+    });
+  });
+
+  let principal = null;
+  ['__COOH__','__ESTER__','__ACIDHALIDE__','__AMIDE__','__NITRILE__','__CHO__','__KETONE__','hydroxy','amino','sulfanyl'].forEach(p=>{
+    if(!principal){ const found = subs.find(s=>s.label===p); if(found) principal = found; }
+  });
+  const otherSubs = subs.filter(s=> s!==principal);
+
+  function scoreForRotation(rotate, flip){
+    return subs.map(s=>{ let p=s.pos; if(flip) p=(6-p)%6; p=(p-rotate+12)%6; return p; });
+  }
+  let best=null;
+  for(let rotate=0; rotate<6; rotate++){
+    for(let f=0; f<2; f++){
+      const locants = scoreForRotation(rotate, f===1);
+      if(principal){
+        const pLoc = locants[subs.indexOf(principal)];
+        if(pLoc!==0) continue;
+      }
+      const key = [...locants].sort((a,b)=>a-b).join(',');
+      if(!best || key < best.key) best = {rotate, flip:f===1, locants, key};
+    }
+  }
+  if(!best){
+    for(let rotate=0; rotate<6; rotate++){
+      for(let f=0; f<2; f++){
+        const locants = scoreForRotation(rotate, f===1);
+        const key = [...locants].sort((a,b)=>a-b).join(',');
+        if(!best || key < best.key) best = {rotate, flip:f===1, locants, key};
+      }
+    }
+  }
+  const finalLocants = {}; subs.forEach((s,i)=> finalLocants[i] = best.locants[i]+1);
+
+  const HALIDE_PREFIX = {F:'fluoro',Cl:'chloro',Br:'bromo',I:'iodo'};
+  const rawPrefixes = otherSubs.map(s=>{
+    const loc = finalLocants[subs.indexOf(s)];
+    let nm = s.label;
+    if(nm==='__COOH__') nm='carboxy';
+    if(nm==='__CHO__') nm='formyl';
+    if(nm==='__ESTER__') nm='(alkoxycarbonyl)';
+    if(nm==='__AMIDE__') nm='carbamoyl';
+    if(nm==='__NITRILE__') nm='cyano';
+    if(nm==='__ACIDHALIDE__') nm=`(${HALIDE_PREFIX[s.haloEl]||'halo'}carbonyl)`;
+    if(nm==='__KETONE__') nm='oxo';
+    return {loc, nm};
+  });
+  const groupedAr = {};
+  rawPrefixes.forEach(p=>{ groupedAr[p.nm] = groupedAr[p.nm] || []; groupedAr[p.nm].push(p.loc); });
+  const prefixJoin = Object.keys(groupedAr).sort().map(nm=>{
+    const locs = groupedAr[nm].sort((a,b)=>a-b);
+    const mult = locs.length>1 ? (MULT[locs.length]||'') : '';
+    return `${locs.join(',')}-${mult}${nm}`;
+  }).join('-');
+
+  const soleSub = subs.length===1;
+
+  if(!principal){
+    if(subs.length===0) return {name:'benzene', note:'Plain aromatic ring — an arene.'};
+    if(soleSub){
+      const only = subs[0];
+      if(only.label==='methyl') return {name:'toluene', note:'Common retained IUPAC name for methylbenzene.'};
+      return {name:`${only.label}benzene`, note:'Mono-substituted benzene ring — no locant needed (all ring positions are equivalent for a single substituent).'};
+    }
+    return {name: `${prefixJoin}benzene`, note:'Substituted benzene (arene). Lowest locant set applied.'};
+  }
+
+  if(principal.label==='__COOH__'){
+    return {name:`${prefixJoin}benzoic acid`, note:'Aromatic carboxylic acid, named as a substituted benzoic acid.'};
+  }
+  if(principal.label==='__CHO__'){
+    return {name:`${prefixJoin}benzaldehyde`, note:'Aromatic aldehyde, named as a substituted benzaldehyde.'};
+  }
+  if(principal.label==='__AMIDE__'){
+    return {name:`${prefixJoin}benzamide`, note:'Aromatic amide, named as a substituted benzamide.'};
+  }
+  if(principal.label==='__NITRILE__'){
+    return {name:`${prefixJoin}benzonitrile`, note:'Aromatic nitrile, named as a substituted benzonitrile.'};
+  }
+  if(principal.label==='__ACIDHALIDE__'){
+    const HALWORD = {F:'benzoyl fluoride',Cl:'benzoyl chloride',Br:'benzoyl bromide',I:'benzoyl iodide'};
+    return {name:`${prefixJoin}${HALWORD[principal.haloEl]||'benzoyl halide'}`, note:'Aromatic acid halide, named as a substituted benzoyl halide.'};
+  }
+  if(principal.label==='hydroxy'){
+    return {name:`${prefixJoin}phenol`, note:'Aromatic alcohol, named as a substituted phenol.'};
+  }
+  if(principal.label==='amino'){
+    return {name:`${prefixJoin}aniline`, note:'Aromatic amine, named as a substituted aniline.'};
+  }
+  if(principal.label==='sulfanyl'){
+    return {name:`${prefixJoin}benzenethiol`, note:'Aromatic thiol, named as a substituted benzenethiol.'};
+  }
+  if(principal.label==='__ESTER__'){
+    const far = farthest(cAdj, principal.rGroupC, new Set());
+    const rName = alkylName(far.dist+1) || 'alkyl';
+    return {name:`${rName} ${prefixJoin}benzoate`, note:'Aromatic ester, named as an alkyl benzoate.'};
+  }
+  if(principal.label==='__KETONE__'){
+    if(!soleSub){
+      return {name:'(substituted aryl ketone)', note:'A ring that carries both a ketone branch and other substituents needs the ring expressed as a substituted-phenyl prefix, which this tool doesn\'t build yet — try the ring and chain separately.'};
+    }
+    const ketoneC = principal.atomId;
+    const kOther = adj[ketoneC].filter(x=> x.id!==principal.ringAtomId && atomById(atoms,x.id).el==='C');
+    if(!kOther.length) return {name:'phenyl ketone', note:'Aryl ketone with no recognizable second chain.'};
+    const rFar = farthest(cAdj, kOther[0].id, new Set([ketoneC]));
+    const chainPath = [ketoneC, ...rFar.path];
+    const dbl=[], trp=[];
+    for(let i=0;i<chainPath.length-1;i++){
+      const bd = bonds.find(b=>(b.a===chainPath[i]&&b.b===chainPath[i+1])||(b.a===chainPath[i+1]&&b.b===chainPath[i]));
+      if(bd && bd.order===2) dbl.push(i+1);
+      if(bd && bd.order===3) trp.push(i+1);
+    }
+    let stem = buildUnsaturatedStem(chainPath.length, dbl, trp);
+    if(/e$/.test(stem)) stem = stem.slice(0,-1);
+    return {name:`1-phenyl${stem}-1-one`, note:'Aryl ketone: the R-chain is the parent, the ring is cited as a phenyl prefix on the carbonyl carbon.'};
+  }
+  return {name:`${prefixJoin}benzene`, note:''};
+}
+
+/* ============================== ACYCLIC NAMING ============================== */
+function nameAcyclic(atoms,bonds,adj){
+  const carbons = atoms.filter(a=>a.el==='C');
+  if(carbons.length===0){
+    // pure heteroatom fragments (e.g. lone -SH, -OH) aren't nameable as a parent chain
+    return {name:'(no carbon skeleton drawn)', note:'Attach your functional group to at least one carbon chain.'};
+  }
+
+  const funcInfo = classify(atoms,bonds,adj);
+  const priorityOrder = ['COOH','ESTER','ACID_HALIDE','AMIDE','NITRILE','CHO','KETONE'];
+  let principalType = null, principalCarbons = [];
+  for(const t of priorityOrder){
+    const found = Object.keys(funcInfo).filter(id=>funcInfo[id].type===t).map(Number);
+    if(found.length){ principalType = t; principalCarbons = found; break; }
+  }
+
+  const cAdj = {};
+  carbons.forEach(c=> cAdj[c.id] = adj[c.id].filter(n=> atomById(atoms,n.id).el==='C'));
+
+  let path;
+  if(principalCarbons.length>=1){
+    path = chainThroughCarbon(cAdj, principalCarbons[0]).path;
+  } else {
+    const f1 = farthest(cAdj, carbons[0].id, new Set());
+    const f2 = farthest(cAdj, f1.node, new Set());
+    path = f2.path;
+  }
+
+  function evalDirection(seq){
+    const dbl=[], trp=[];
+    for(let i=0;i<seq.length-1;i++){
+      const bd = bonds.find(b=>(b.a===seq[i]&&b.b===seq[i+1])||(b.a===seq[i+1]&&b.b===seq[i]));
+      if(bd.order===2) dbl.push(i+1);
+      if(bd.order===3) trp.push(i+1);
+    }
+    let principalLoc = null;
+    seq.forEach((id,i)=>{ if(principalCarbons.includes(id)) principalLoc = principalLoc===null ? i+1 : principalLoc; });
+    return {dbl,trp,principalLoc};
+  }
+  const fwd = evalDirection(path), rev = evalDirection([...path].reverse());
+  let seq = path;
+  if(principalCarbons.length){
+    if((rev.principalLoc||99) < (fwd.principalLoc||99)) seq=[...path].reverse();
+  } else {
+    const fKey=[...fwd.dbl,...fwd.trp].sort((a,b)=>a-b).join(',');
+    const rKey=[...rev.dbl,...rev.trp].sort((a,b)=>a-b).join(',');
+    if(rKey && (!fKey || rKey<fKey)) seq=[...path].reverse();
+  }
+
+  const posOf = {}; seq.forEach((id,i)=> posOf[id]=i+1);
+  const chainSet = new Set(seq);
+  const esterOIds = new Set(Object.values(funcInfo).filter(v=>v.type==='ESTER').map(v=>v.esterO));
+  const BRANCH_PREFIX_MAP = {COOH:'carboxy', CHO:'formyl', AMIDE:'carbamoyl', NITRILE:'cyano', KETONE:'oxo'};
+
+  const prefixesRaw = [];
+  const ketoneLocants = [];
+
+  seq.forEach(cid=>{
+    const loc = posOf[cid];
+    const info = funcInfo[cid];
+    if(info && info.type==='KETONE') ketoneLocants.push(loc);
+
+    const skip = new Set();
+    if(info){
+      if(info.oId) skip.add(info.oId);
+      if(info.ohId) skip.add(info.ohId);
+      if(info.nId) skip.add(info.nId);
+      if(info.esterO) skip.add(info.esterO);
+      if(info.halId) skip.add(info.halId);
+    }
+    const s = substituentsOnCarbon(atoms, adj, cAdj, cid, skip, esterOIds);
+    const isPrincipalHere = info && principalType && info.type===principalType && principalCarbons.includes(cid);
+
+    if(s.oh && !isPrincipalHere) prefixesRaw.push({loc, name:'hydroxy'});
+    if(s.amino) prefixesRaw.push({loc, name:'amino'});
+    if(s.nitro) prefixesRaw.push({loc, name:'nitro'});
+    if(s.sh) prefixesRaw.push({loc, name:'sulfanyl'});
+    s.halogens.forEach(h=> prefixesRaw.push({loc, name:SUBST_PREFIX[h]}));
+    s.alkoxy.forEach(nm=> prefixesRaw.push({loc, name:nm}));
+
+    adj[cid].filter(nb=> atomById(atoms,nb.id).el==='C' && !chainSet.has(nb.id)).forEach(nb=>{
+      const nfi = funcInfo[nb.id];
+      if(nfi && nfi.type==='ESTER'){
+        const far2 = nfi.rGroupC ? farthest(cAdj, nfi.rGroupC, new Set()) : null;
+        const rName = far2 ? (alkylName(far2.dist+1)||'alkyl') : 'alkyl';
+        prefixesRaw.push({loc, name:`(${rName}oxycarbonyl)`});
+      } else if(nfi && nfi.type==='ACID_HALIDE'){
+        prefixesRaw.push({loc, name:`(${SUBST_PREFIX[nfi.haloEl]||'halo'}carbonyl)`});
+      } else if(nfi && BRANCH_PREFIX_MAP[nfi.type]){
+        prefixesRaw.push({loc, name:BRANCH_PREFIX_MAP[nfi.type]});
+      } else {
+        const far = farthest(cAdj, nb.id, new Set([cid]));
+        prefixesRaw.push({loc, name: alkylName(far.dist+1)});
+      }
+    });
+  });
+
+  const dbl=[], trp=[];
+  for(let i=0;i<seq.length-1;i++){
+    const bd = bonds.find(b=>(b.a===seq[i]&&b.b===seq[i+1])||(b.a===seq[i+1]&&b.b===seq[i]));
+    if(bd.order===2) dbl.push(i+1);
+    if(bd.order===3) trp.push(i+1);
+  }
+  const len = seq.length;
+  let stem = buildUnsaturatedStem(len, dbl, trp);
+
+  let suffixStr = '';
+  let esterPrefix = '';
+  const HALIDE_WORD = {F:'oyl fluoride', Cl:'oyl chloride', Br:'oyl bromide', I:'oyl iodide'};
+
+  if(principalType==='COOH'){
+    const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
+    suffixStr = buildSuffix(locs, 'oic acid', len, true);
+  } else if(principalType==='ESTER'){
+    const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
+    suffixStr = buildSuffix(locs, 'oate', len, true);
+    const rC = funcInfo[principalCarbons[0]].rGroupC;
+    if(rC){ const far = farthest(cAdj, rC, new Set()); esterPrefix = (alkylName(far.dist+1)||'alkyl') + ' '; }
+  } else if(principalType==='ACID_HALIDE'){
+    const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
+    const haloEl = funcInfo[principalCarbons[0]].haloEl;
+    suffixStr = buildSuffix(locs, HALIDE_WORD[haloEl]||'oyl halide', len, true);
+  } else if(principalType==='AMIDE'){
+    const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
+    suffixStr = buildSuffix(locs, 'amide', len, true);
+  } else if(principalType==='NITRILE'){
+    const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
+    suffixStr = buildSuffix(locs, 'nitrile', len, true);
+  } else if(principalType==='CHO'){
+    const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
+    suffixStr = buildSuffix(locs, 'al', len, true);
+  } else if(ketoneLocants.length){
+    suffixStr = buildSuffix(ketoneLocants, 'one', len, false);
+  } else {
+    const ohLocs = prefixesRaw.filter(p=>p.name==='hydroxy').map(p=>p.loc);
+    const nh2Locs = prefixesRaw.filter(p=>p.name==='amino').map(p=>p.loc);
+    const shLocs = prefixesRaw.filter(p=>p.name==='sulfanyl').map(p=>p.loc);
+    if(ohLocs.length){ suffixStr = buildSuffix(ohLocs, 'ol', len, false); }
+    else if(nh2Locs.length){ suffixStr = buildSuffix(nh2Locs, 'amine', len, false); }
+    else if(shLocs.length){ suffixStr = buildSuffix(shLocs, 'thiol', len, false); }
+  }
+
+  // remove prefixes that became the suffix
+  let prefixes = prefixesRaw;
+  if(suffixStr){
+    if(/ol$/.test(suffixStr) && !/thiol$/.test(suffixStr)) prefixes = prefixes.filter(p=>p.name!=='hydroxy');
+    if(/amine$/.test(suffixStr)) prefixes = prefixes.filter(p=>p.name!=='amino');
+    if(/thiol$/.test(suffixStr)) prefixes = prefixes.filter(p=>p.name!=='sulfanyl');
+  }
+
+  const grouped = {};
+  prefixes.forEach(p=>{ grouped[p.name] = grouped[p.name] || []; grouped[p.name].push(p.loc); });
+  const prefixStrs = Object.keys(grouped).sort().map(name=>{
+    const locs = grouped[name].sort((a,b)=>a-b);
+    const mult = locs.length>1 ? (MULT[locs.length]||'') : '';
+    const needLoc = locs.length>1 || len>2;
+    return needLoc ? `${locs.join(',')}-${mult}${name}` : `${mult}${name}`;
+  });
+  const prefixJoined = prefixStrs.join('-');
+
+  if(suffixStr && startsWithVowel(suffixStr.replace(/^-[\d,]+-?/,'')) && /e$/.test(stem)){
+    stem = stem.slice(0,-1);
+  }
+
+  const core = `${esterPrefix}${prefixJoined}${stem}${suffixStr}`;
+
+  let note = 'Best-effort IUPAC-style name: longest chain through the highest-priority functional group, lowest locants applied.';
+  if(principalType==='AMIDE' || principalType==='ESTER') note += ' N/O-substitution details on amides/esters beyond the parent are simplified.';
+  const hasSecAmine = prefixesRaw.some(p=>p.name==='amino') && !suffixStr.includes('amine');
+  if(hasSecAmine) note += ' Secondary/tertiary amine branches are flagged as "amino" without full N-substituent detail.';
+
+  return {name: core, note};
+}
+
+/* ============================== ANHYDRIDES (functional-class name; whole-molecule special case) ============================== */
+function nameAnhydride(atoms,bonds,adj,cAdjAll,funcInfo){
+  const anhydrideCarbons = Object.keys(funcInfo).filter(id=>funcInfo[id].type==='ANHYDRIDE').map(Number);
+  if(!anhydrideCarbons.length) return null;
+  const c1 = anhydrideCarbons[0];
+  const c2 = funcInfo[c1].otherAcylC;
+  function acylStem(cid){
+    const far = farthest(cAdjAll, cid, new Set());
+    const len = far.dist+1;
+    return (ALKANE[len] || `${len}carbon`) + 'anoic';
+  }
+  const name1 = acylStem(c1), name2 = acylStem(c2);
+  if(name1===name2){
+    return {name:`${name1} anhydride`, note:'Symmetrical carboxylic acid anhydride, named by functional class nomenclature.'};
+  }
+  const sorted = [name1,name2].sort();
+  return {name:`${sorted[0]} ${sorted[1]} anhydride`, note:'Unsymmetrical carboxylic acid anhydride — acyl groups cited alphabetically.'};
+}
+
+/* ============================== MONOCYCLIC (non-aromatic ring) NAMING ============================== */
+function compareLocantArr(a,b){
+  const len = Math.max(a.length,b.length);
+  for(let i=0;i<len;i++){
+    const av = a[i]===undefined?Infinity:a[i];
+    const bv = b[i]===undefined?Infinity:b[i];
+    if(av!==bv) return av-bv;
+  }
+  return 0;
+}
+function buildRingSuffix(locs, word){
+  const sorted = [...locs].sort((a,b)=>a-b);
+  if(sorted.length<=1) return word;
+  const mult = MULT[sorted.length]||'';
+  return `-${sorted.join(',')}-${mult}${word}`;
+}
+
+function nameMonocyclic(atoms,bonds,adj,cAdjAll,ring,funcInfo){
+  const n = ring.length;
+  if(!ring.every(id=>atomById(atoms,id).el==='C')){
+    return {name:'(ring system detected)', note:'This ring contains a non-carbon atom (a cyclic ether, lactone, lactam…) — heterocyclic ring naming isn\'t supported by this tool yet.'};
+  }
+  const ringSet = new Set(ring);
+  const esterOIds = new Set(Object.values(funcInfo).filter(v=>v.type==='ESTER').map(v=>v.esterO));
+  function ringBond(i,j){ return bonds.find(b=>(b.a===i&&b.b===j)||(b.a===j&&b.b===i)); }
+
+  const ringInfo = {};
+  ring.forEach(rid=>{
+    if(funcInfo[rid] && funcInfo[rid].type==='KETONE'){ ringInfo[rid] = {exoType:'KETONE'}; return; }
+    adj[rid].forEach(nb=>{
+      if(ringSet.has(nb.id)) return;
+      const at = atomById(atoms,nb.id);
+      const fi = funcInfo[nb.id];
+      if(at.el==='C' && fi && fi.type!=='KETONE' && fi.type!=='ANHYDRIDE'){
+        ringInfo[rid] = {exoType:fi.type, exoCarbonId:nb.id, rGroupC:fi.rGroupC, haloEl:fi.haloEl};
+      }
+    });
+  });
+
+  const PRIORITY = ['COOH','ESTER','ACID_HALIDE','AMIDE','NITRILE','CHO','KETONE'];
+  let principalType=null, principalRingAtoms=[];
+  for(const t of PRIORITY){
+    const found = ring.filter(rid=> ringInfo[rid] && ringInfo[rid].exoType===t);
+    if(found.length){ principalType=t; principalRingAtoms=found; break; }
+  }
+  if(!principalType){
+    const ohAtoms=[], nh2Atoms=[], shAtoms=[];
+    ring.forEach(rid=>{
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,new Set(),esterOIds);
+      if(s.oh) ohAtoms.push(rid);
+      if(s.amino) nh2Atoms.push(rid);
+      if(s.sh) shAtoms.push(rid);
+    });
+    if(ohAtoms.length){ principalType='OH_RING'; principalRingAtoms=ohAtoms; }
+    else if(nh2Atoms.length){ principalType='NH2_RING'; principalRingAtoms=nh2Atoms; }
+    else if(shAtoms.length){ principalType='SH_RING'; principalRingAtoms=shAtoms; }
+  }
+
+  const revRing = [ring[0], ...ring.slice(1).reverse()];
+  function seqFor(rot,flip){ const base = flip?revRing:ring; return base.slice(rot).concat(base.slice(0,rot)); }
+
+  function evalNumbering(rot,flip){
+    const seq = seqFor(rot,flip);
+    const posOf = {}; seq.forEach((id,i)=> posOf[id]=i+1);
+    const dbl=[], trp=[];
+    for(let k=0;k<n;k++){
+      const bd = ringBond(seq[k], seq[(k+1)%n]);
+      if(bd){ if(bd.order===2) dbl.push(k+1); if(bd.order===3) trp.push(k+1); }
+    }
+    const principalLocs = principalRingAtoms.map(id=>posOf[id]).sort((a,b)=>a-b);
+    const subLocs = [];
+    seq.forEach(rid=>{
+      const loc = posOf[rid];
+      const rinfo = ringInfo[rid];
+      const skip = new Set(); if(rinfo && rinfo.exoCarbonId) skip.add(rinfo.exoCarbonId);
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,skip,esterOIds);
+      const isPrincipalHere = principalType && principalRingAtoms.includes(rid);
+      if(s.oh && !(principalType==='OH_RING' && isPrincipalHere)) subLocs.push(loc);
+      if(s.amino && !(principalType==='NH2_RING' && isPrincipalHere)) subLocs.push(loc);
+      if(s.sh && !(principalType==='SH_RING' && isPrincipalHere)) subLocs.push(loc);
+      if(s.nitro) subLocs.push(loc);
+      s.halogens.forEach(()=> subLocs.push(loc));
+      s.alkoxy.forEach(()=> subLocs.push(loc));
+      if(rinfo && rinfo.exoType && rinfo.exoType!==principalType) subLocs.push(loc);
+      adj[rid].filter(nb=> !ringSet.has(nb.id) && atomById(atoms,nb.id).el==='C' && !(rinfo&&rinfo.exoCarbonId===nb.id)).forEach(()=> subLocs.push(loc));
+    });
+    subLocs.sort((a,b)=>a-b);
+    return {seq,posOf,dbl,trp,unsat:[...dbl,...trp].sort((a,b)=>a-b),principalLocs,subLocs};
+  }
+
+  let candidates = [];
+  for(let rot=0; rot<n; rot++) for(let flip=0; flip<2; flip++) candidates.push({rot,flip,...evalNumbering(rot,flip)});
+  function filterBest(list,key){
+    let bestArr=null;
+    list.forEach(c=>{ if(bestArr===null || compareLocantArr(c[key],bestArr)<0) bestArr=c[key]; });
+    return list.filter(c=> compareLocantArr(c[key],bestArr)===0);
+  }
+  candidates = filterBest(candidates,'principalLocs');
+  candidates = filterBest(candidates,'unsat');
+  candidates = filterBest(candidates,'subLocs');
+  const chosen = candidates[0];
+
+  const prefixesRaw = [];
+  chosen.seq.forEach(rid=>{
+    const loc = chosen.posOf[rid];
+    const rinfo = ringInfo[rid];
+    const skip = new Set(); if(rinfo && rinfo.exoCarbonId) skip.add(rinfo.exoCarbonId);
+    const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,skip,esterOIds);
+    const isPrincipalHere = principalType && principalRingAtoms.includes(rid);
+
+    if(s.oh && !(principalType==='OH_RING' && isPrincipalHere)) prefixesRaw.push({loc,name:'hydroxy'});
+    if(s.amino && !(principalType==='NH2_RING' && isPrincipalHere)) prefixesRaw.push({loc,name:'amino'});
+    if(s.sh && !(principalType==='SH_RING' && isPrincipalHere)) prefixesRaw.push({loc,name:'sulfanyl'});
+    if(s.nitro) prefixesRaw.push({loc,name:'nitro'});
+    s.halogens.forEach(h=> prefixesRaw.push({loc,name:SUBST_PREFIX[h]}));
+    s.alkoxy.forEach(nm=> prefixesRaw.push({loc,name:nm}));
+
+    if(rinfo && rinfo.exoType && rinfo.exoType!==principalType){
+      const map = {COOH:'carboxy', CHO:'formyl', AMIDE:'carbamoyl', NITRILE:'cyano', KETONE:'oxo'};
+      if(rinfo.exoType==='ESTER'){
+        const far = rinfo.rGroupC ? farthest(cAdjAll, rinfo.rGroupC, new Set()) : null;
+        prefixesRaw.push({loc, name:`(${(far?alkylName(far.dist+1):'alkyl')||'alkyl'}oxycarbonyl)`});
+      } else if(rinfo.exoType==='ACID_HALIDE'){
+        prefixesRaw.push({loc, name:`(${SUBST_PREFIX[rinfo.haloEl]||'halo'}carbonyl)`});
+      } else if(map[rinfo.exoType]){
+        prefixesRaw.push({loc, name:map[rinfo.exoType]});
+      }
+    }
+    adj[rid].filter(nb=> !ringSet.has(nb.id) && atomById(atoms,nb.id).el==='C' && !(rinfo&&rinfo.exoCarbonId===nb.id)).forEach(nb=>{
+      const far = farthest(cAdjAll, nb.id, new Set([rid]));
+      prefixesRaw.push({loc, name:alkylName(far.dist+1)});
+    });
+  });
+
+  let stem = 'cyclo' + buildUnsaturatedStem(n, chosen.dbl, chosen.trp);
+  let suffixStr = '', esterPrefixText = '';
+  const HALWORD = {F:'carbonyl fluoride',Cl:'carbonyl chloride',Br:'carbonyl bromide',I:'carbonyl iodide'};
+
+  if(principalType==='COOH'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxylic acid'); }
+  else if(principalType==='ESTER'){
+    suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxylate');
+    const rC = ringInfo[principalRingAtoms[0]] && ringInfo[principalRingAtoms[0]].rGroupC;
+    if(rC){ const far = farthest(cAdjAll, rC, new Set()); esterPrefixText = (alkylName(far.dist+1)||'alkyl') + ' '; }
+  }
+  else if(principalType==='ACID_HALIDE'){
+    const haloEl = ringInfo[principalRingAtoms[0]].haloEl;
+    suffixStr = buildRingSuffix(chosen.principalLocs, HALWORD[haloEl]||'carbonyl halide');
+  }
+  else if(principalType==='AMIDE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxamide'); }
+  else if(principalType==='NITRILE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carbonitrile'); }
+  else if(principalType==='CHO'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carbaldehyde'); }
+  else if(principalType==='KETONE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'one'); }
+  else if(principalType==='OH_RING'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'ol'); }
+  else if(principalType==='NH2_RING'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'amine'); }
+  else if(principalType==='SH_RING'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'thiol'); }
+
+  if(suffixStr && startsWithVowel(suffixStr.replace(/^-[\d,]+-?/,'')) && /e$/.test(stem)){
+    stem = stem.slice(0,-1);
+  }
+
+  const noPrincipalOrUnsat = !principalType && chosen.dbl.length===0 && chosen.trp.length===0;
+  let prefixJoined;
+  if(prefixesRaw.length===1 && noPrincipalOrUnsat){
+    prefixJoined = prefixesRaw[0].name;
+  } else {
+    const grouped = {};
+    prefixesRaw.forEach(p=>{ grouped[p.name]=grouped[p.name]||[]; grouped[p.name].push(p.loc); });
+    prefixJoined = Object.keys(grouped).sort().map(name=>{
+      const locs = grouped[name].sort((a,b)=>a-b);
+      const mult = locs.length>1 ? (MULT[locs.length]||'') : '';
+      return `${locs.join(',')}-${mult}${name}`;
+    }).join('-');
+  }
+
+  const core = `${esterPrefixText}${prefixJoined}${stem}${suffixStr}`;
+  let note = 'Best-effort IUPAC-style name for a single carbocyclic ring: lowest locants to the principal group, then ring unsaturation, then substituents (a single instance of the principal group is left unnumbered, e.g. "cyclohexanol").';
+  note += ' Exocyclic functional groups are recognized when attached directly to the ring; groups further down a branch are read as plain alkyl.';
+  return {name: core, note};
+}
+function nameMolecule(atoms,bonds){
+  if(atoms.length===0) return {name:'(nothing drawn yet)', note:''};
+  const adj = adjacency(atoms,bonds);
+  const cAdjAll = {};
+  atoms.filter(a=>a.el==='C').forEach(c=> cAdjAll[c.id] = adj[c.id].filter(n=> atomById(atoms,n.id).el==='C'));
+  const rings = findRings(atoms,bonds,adj);
+
+  if(rings.length===0){
+    const funcInfoFlat = classify(atoms,bonds,adj);
+    const anhydrideResult = nameAnhydride(atoms,bonds,adj,cAdjAll,funcInfoFlat);
+    if(anhydrideResult) return anhydrideResult;
+  }
+
+  if(rings.length>1){
+    return {name:'(polycyclic / multi-ring structure detected)', note:'More than one ring was detected — fused, bridged, spiro, or separate ring-assembly (e.g. biphenyl-style) nomenclature is not supported by this tool yet.'};
+  }
+
+  const funcInfo = classify(atoms,bonds,adj);
+  if(rings.length===1){
+    const benzeneRings = rings.filter(r=>isBenzeneRing(r,atoms,bonds));
+    if(benzeneRings.length===1){
+      return nameAromatic(atoms,bonds,adj,cAdjAll,benzeneRings[0],funcInfo);
+    }
+    return nameMonocyclic(atoms,bonds,adj,cAdjAll,rings[0],funcInfo);
+  }
+  return nameAcyclic(atoms,bonds,adj);
+}
+
+/* ============================== PERSISTENCE (per-user artifact storage, falls back to session-only) ============================== */
+const STORAGE_KEY = 'molecule-namer-state';
+let saveTimer = null;
+function scheduleSave(){
+  setSaveBadge('unsaved');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 700);
+}
+async function saveState(){
+  if(!(window.storage && window.storage.set)){ setSaveBadge('local'); return; }
+  try{
+    setSaveBadge('saving');
+    await window.storage.set(STORAGE_KEY, JSON.stringify({atoms, bonds, nextAtomId, nextBondId}));
+    setSaveBadge('saved');
+  }catch(err){ setSaveBadge('local'); }
+}
+async function restoreState(){
+  if(!(window.storage && window.storage.get)) return false;
+  try{
+    const res = await window.storage.get(STORAGE_KEY);
+    if(res && res.value){
+      const data = JSON.parse(res.value);
+      if(data && Array.isArray(data.atoms) && Array.isArray(data.bonds)){
+        atoms = data.atoms; bonds = data.bonds;
+        const maxA = atoms.reduce((m,a)=>Math.max(m,a.id),0);
+        const maxB = bonds.reduce((m,b)=>Math.max(m,b.id),0);
+        nextAtomId = data.nextAtomId || maxA+1;
+        nextBondId = data.nextBondId || maxB+1;
+        return atoms.length>0;
+      }
+    }
+  }catch(err){ /* no saved structure yet, or storage unavailable — start fresh */ }
+  return false;
+}
+function setSaveBadge(state){
+  const el = document.getElementById('saveBadge');
+  if(!el) return;
+  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ unsaved', local:'○ local only'};
+  el.textContent = map[state] || map.local;
+}
+
+/* ============================== INIT ============================== */
+(async function init(){
+  resizeCanvas();
+  updateUndoBtn();
+  const restored = await restoreState();
+  if(restored){ render(); runNaming(); setSaveBadge('saved'); }
+  else { setSaveBadge('local'); }
+})();
+</script>
+</body>
+</html>
