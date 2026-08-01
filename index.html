@@ -1853,7 +1853,7 @@ async function restoreState(){
 function setSaveBadge(state){
   const el = document.getElementById('saveBadge');
   if(!el) return;
-  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ unsaved', local:'○ local only'};
+  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ unsaved', local:'○ ashish/ourin'};
   el.textContent = map[state] || map.local;
 }
 
