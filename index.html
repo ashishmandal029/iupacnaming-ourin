@@ -823,12 +823,16 @@ function nameBranch(atoms, bonds, adj, cAdj, rootId, blockedId, funcInfo, esterO
     if(bd){ if(bd.order===2) dbl.push(i+1); if(bd.order===3) trp.push(i+1); }
   }
 
-  const FUNC_PREFIX_MAP = {COOH:'carboxy', CHO:'formyl', AMIDE:'carbamoyl', NITRILE:'cyano', KETONE:'oxo'};
-  function funcPrefix(fi){
+  const FUNC_PREFIX_MAP = {COOH:'carboxy', CHO:'formyl', NITRILE:'cyano', KETONE:'oxo'};
+  function funcPrefix(fi, fiCarbonId){
     if(fi.type==='ESTER'){
       return `(${nameRGroup(atoms,bonds,adj,cAdj,fi.rGroupC,fi.esterO,funcInfo,esterOIds)}oxycarbonyl)`;
     }
     if(fi.type==='ACID_HALIDE') return `(${SUBST_PREFIX[fi.haloEl]||'halo'}carbonyl)`;
+    if(fi.type==='AMIDE'){
+      const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,fi.nId,fiCarbonId,funcInfo,esterOIds);
+      return aNames.length ? `(${aminoNParentPrefix(aNames)}carbamoyl)` : 'carbamoyl';
+    }
     return FUNC_PREFIX_MAP[fi.type] || null;
   }
 
@@ -846,12 +850,12 @@ function nameBranch(atoms, bonds, adj, cAdj, rootId, blockedId, funcInfo, esterO
     if(s.sh) subPrefixesRaw.push({loc, name:'sulfanyl'});
     s.halogens.forEach(h=> subPrefixesRaw.push({loc, name:SUBST_PREFIX[h]}));
     s.alkoxy.forEach(nm=> subPrefixesRaw.push({loc, name:nm}));
-    if(fi){ const fp = funcPrefix(fi); if(fp) subPrefixesRaw.push({loc, name:fp}); }
+    if(fi){ const fp = funcPrefix(fi, pid); if(fp) subPrefixesRaw.push({loc, name:fp}); }
 
     adj[pid].filter(nb=> atomById(atoms,nb.id).el==='C' && !subSet.has(nb.id) && nb.id!==blockedId).forEach(nb=>{
       const nfi = funcInfo[nb.id];
       if(nfi){
-        const fp = funcPrefix(nfi);
+        const fp = funcPrefix(nfi, nb.id);
         if(fp) subPrefixesRaw.push({loc, name:fp});
       } else {
         subPrefixesRaw.push({loc, name: nameBranch(atoms,bonds,adj,cAdj, nb.id, pid, funcInfo, esterOIds)});
@@ -1170,7 +1174,10 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
     if(nm==='__COOH__') nm='carboxy';
     if(nm==='__CHO__') nm='formyl';
     if(nm==='__ESTER__') nm='(alkoxycarbonyl)';
-    if(nm==='__AMIDE__') nm='carbamoyl';
+    if(nm==='__AMIDE__'){
+      const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,funcInfo[s.atomId].nId,s.atomId,funcInfo,esterOIds);
+      nm = aNames.length ? `(${aminoNParentPrefix(aNames)}carbamoyl)` : 'carbamoyl';
+    }
     if(nm==='__NITRILE__') nm='cyano';
     if(nm==='__ACIDHALIDE__') nm=`(${HALIDE_PREFIX[s.haloEl]||'halo'}carbonyl)`;
     if(nm==='__KETONE__') nm='oxo';
@@ -1205,7 +1212,10 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
     return {name:`${prefixJoin}benzaldehyde`, note:'Aromatic aldehyde, named as a substituted benzaldehyde.'};
   }
   if(principal.label==='__AMIDE__'){
-    return {name:`${prefixJoin}benzamide`, note:'Aromatic amide, named as a substituted benzamide.'};
+    const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,funcInfo[principal.atomId].nId,principal.atomId,funcInfo,esterOIds);
+    const nPrefix = aNames.length ? aminoNParentPrefix(aNames) : '';
+    const joiner3 = (nPrefix && prefixJoin) ? '-' : '';
+    return {name:`${nPrefix}${joiner3}${prefixJoin}benzamide`, note:'Aromatic amide, named as a substituted benzamide (N- locants mark substituents on the amide nitrogen itself).'};
   }
   if(principal.label==='__NITRILE__'){
     return {name:`${prefixJoin}benzonitrile`, note:'Aromatic nitrile, named as a substituted benzonitrile.'};
@@ -1218,7 +1228,9 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
     return {name:`${prefixJoin}phenol`, note:'Aromatic alcohol, named as a substituted phenol.'};
   }
   if(principal.label==='amino'){
-    return {name:`${aminoNParentPrefix(principal.aminoNames||[])}${prefixJoin}aniline`, note:'Aromatic amine, named as a substituted aniline (N- locants mark substituents on the amine nitrogen itself).'};
+    const nPrefix2 = aminoNParentPrefix(principal.aminoNames||[]);
+    const joiner4 = (nPrefix2 && prefixJoin) ? '-' : '';
+    return {name:`${nPrefix2}${joiner4}${prefixJoin}aniline`, note:'Aromatic amine, named as a substituted aniline (N- locants mark substituents on the amine nitrogen itself).'};
   }
   if(principal.label==='sulfanyl'){
     return {name:`${prefixJoin}benzenethiol`, note:'Aromatic thiol, named as a substituted benzenethiol.'};
@@ -1341,7 +1353,7 @@ function nameAcyclic(atoms,bonds,adj){
 
   const posOf = {}; seq.forEach((id,i)=> posOf[id]=i+1);
   const chainSet = new Set(seq);
-  const BRANCH_PREFIX_MAP = {COOH:'carboxy', CHO:'formyl', AMIDE:'carbamoyl', NITRILE:'cyano', KETONE:'oxo'};
+  const BRANCH_PREFIX_MAP = {COOH:'carboxy', CHO:'formyl', NITRILE:'cyano', KETONE:'oxo'};
 
   const prefixesRaw = [];
   const ketoneLocants = [];
@@ -1379,6 +1391,9 @@ function nameAcyclic(atoms,bonds,adj){
         prefixesRaw.push({loc, name:`(${rName}oxycarbonyl)`});
       } else if(nfi && nfi.type==='ACID_HALIDE'){
         prefixesRaw.push({loc, name:`(${SUBST_PREFIX[nfi.haloEl]||'halo'}carbonyl)`});
+      } else if(nfi && nfi.type==='AMIDE'){
+        const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,nfi.nId,nb.id,funcInfo,esterOIds);
+        prefixesRaw.push({loc, name: aNames.length ? `(${aminoNParentPrefix(aNames)}carbamoyl)` : 'carbamoyl'});
       } else if(nfi && BRANCH_PREFIX_MAP[nfi.type]){
         prefixesRaw.push({loc, name:BRANCH_PREFIX_MAP[nfi.type]});
       } else {
@@ -1416,6 +1431,8 @@ function nameAcyclic(atoms,bonds,adj){
   } else if(principalType==='AMIDE'){
     const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
     suffixStr = buildSuffix(locs, 'amide', len, true);
+    const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,funcInfo[principalCarbons[0]].nId,principalCarbons[0],funcInfo,esterOIds);
+    if(aNames.length) aminePrefixText = aminoNParentPrefix(aNames);
   } else if(principalType==='NITRILE'){
     const locs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
     suffixStr = buildSuffix(locs, 'nitrile', len, true);
@@ -1460,7 +1477,8 @@ function nameAcyclic(atoms,bonds,adj){
     stem = stem.slice(0,-1);
   }
 
-  const core = `${esterPrefix}${aminePrefixText}${prefixJoined}${stem}${suffixStr}`;
+  const joiner1 = (aminePrefixText && prefixJoined) ? '-' : '';
+  const core = `${esterPrefix}${aminePrefixText}${joiner1}${prefixJoined}${stem}${suffixStr}`;
 
   let note = 'Best-effort IUPAC-style name: longest chain through the highest-priority functional group, lowest locants applied.';
   if(principalType==='AMIDE' || principalType==='ESTER') note += ' N/O-substitution details on amides/esters beyond the parent are simplified.';
@@ -1586,42 +1604,60 @@ function nameMonocyclic(atoms,bonds,adj,cAdjAll,ring,funcInfo){
     list.forEach(c=>{ if(bestArr===null || compareLocantArr(c[key],bestArr)<0) bestArr=c[key]; });
     return list.filter(c=> compareLocantArr(c[key],bestArr)===0);
   }
+  function buildPrefixesFor(seq, posOf){
+    const raw = [];
+    seq.forEach(rid=>{
+      const loc = posOf[rid];
+      const rinfo = ringInfo[rid];
+      const skip = new Set(); if(rinfo && rinfo.exoCarbonId) skip.add(rinfo.exoCarbonId);
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,skip,esterOIds);
+      const isPrincipalHere = principalType && principalRingAtoms.includes(rid);
+
+      if(s.oh && !(principalType==='OH_RING' && isPrincipalHere)) raw.push({loc,name:'hydroxy'});
+      if(s.amino && !(principalType==='NH2_RING' && isPrincipalHere)) raw.push({loc,name: aminoPrefixName(atoms,bonds,adj,cAdjAll,s.aminoNId,rid,funcInfo,esterOIds)});
+      if(s.sh && !(principalType==='SH_RING' && isPrincipalHere)) raw.push({loc,name:'sulfanyl'});
+      if(s.nitro) raw.push({loc,name:'nitro'});
+      s.halogens.forEach(h=> raw.push({loc,name:SUBST_PREFIX[h]}));
+      s.alkoxy.forEach(nm=> raw.push({loc,name:nm}));
+
+      if(rinfo && rinfo.exoType && rinfo.exoType!==principalType){
+        const map = {COOH:'carboxy', CHO:'formyl', NITRILE:'cyano', KETONE:'oxo'};
+        if(rinfo.exoType==='ESTER'){
+          const eOId = rinfo.exoCarbonId!=null ? funcInfo[rinfo.exoCarbonId].esterO : null;
+          const rName = nameRGroup(atoms,bonds,adj,cAdjAll,rinfo.rGroupC,eOId,funcInfo,esterOIds);
+          raw.push({loc, name:`(${rName}oxycarbonyl)`});
+        } else if(rinfo.exoType==='ACID_HALIDE'){
+          raw.push({loc, name:`(${SUBST_PREFIX[rinfo.haloEl]||'halo'}carbonyl)`});
+        } else if(rinfo.exoType==='AMIDE'){
+          const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdjAll,funcInfo[rinfo.exoCarbonId].nId,rinfo.exoCarbonId,funcInfo,esterOIds);
+          raw.push({loc, name: aNames.length ? `(${aminoNParentPrefix(aNames)}carbamoyl)` : 'carbamoyl'});
+        } else if(map[rinfo.exoType]){
+          raw.push({loc, name:map[rinfo.exoType]});
+        }
+      }
+      adj[rid].filter(nb=> !ringSet.has(nb.id) && atomById(atoms,nb.id).el==='C' && !(rinfo&&rinfo.exoCarbonId===nb.id)).forEach(nb=>{
+        raw.push({loc, name: nameBranch(atoms,bonds,adj,cAdjAll,nb.id,rid,funcInfo,esterOIds)});
+      });
+    });
+    return raw;
+  }
+  function alphaTieBreakScore(raw){
+    const grouped = {};
+    raw.forEach(p=>{ grouped[p.name]=grouped[p.name]||[]; grouped[p.name].push(p.loc); });
+    const score = [];
+    sortedByAlpha(Object.keys(grouped)).forEach(nm=> grouped[nm].sort((a,b)=>a-b).forEach(loc=>score.push(loc)));
+    return score;
+  }
+
   candidates = filterBest(candidates,'principalLocs');
   candidates = filterBest(candidates,'unsat');
   candidates = filterBest(candidates,'subLocs');
+  if(candidates.length>1){
+    candidates.forEach(c=>{ c.namedPrefixes = buildPrefixesFor(c.seq, c.posOf); c.alphaScore = alphaTieBreakScore(c.namedPrefixes); });
+    candidates = filterBest(candidates,'alphaScore');
+  }
   const chosen = candidates[0];
-
-  const prefixesRaw = [];
-  chosen.seq.forEach(rid=>{
-    const loc = chosen.posOf[rid];
-    const rinfo = ringInfo[rid];
-    const skip = new Set(); if(rinfo && rinfo.exoCarbonId) skip.add(rinfo.exoCarbonId);
-    const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,skip,esterOIds);
-    const isPrincipalHere = principalType && principalRingAtoms.includes(rid);
-
-    if(s.oh && !(principalType==='OH_RING' && isPrincipalHere)) prefixesRaw.push({loc,name:'hydroxy'});
-    if(s.amino && !(principalType==='NH2_RING' && isPrincipalHere)) prefixesRaw.push({loc,name: aminoPrefixName(atoms,bonds,adj,cAdjAll,s.aminoNId,rid,funcInfo,esterOIds)});
-    if(s.sh && !(principalType==='SH_RING' && isPrincipalHere)) prefixesRaw.push({loc,name:'sulfanyl'});
-    if(s.nitro) prefixesRaw.push({loc,name:'nitro'});
-    s.halogens.forEach(h=> prefixesRaw.push({loc,name:SUBST_PREFIX[h]}));
-    s.alkoxy.forEach(nm=> prefixesRaw.push({loc,name:nm}));
-
-    if(rinfo && rinfo.exoType && rinfo.exoType!==principalType){
-      const map = {COOH:'carboxy', CHO:'formyl', AMIDE:'carbamoyl', NITRILE:'cyano', KETONE:'oxo'};
-      if(rinfo.exoType==='ESTER'){
-        const eOId = rinfo.exoCarbonId!=null ? funcInfo[rinfo.exoCarbonId].esterO : null;
-        const rName = nameRGroup(atoms,bonds,adj,cAdjAll,rinfo.rGroupC,eOId,funcInfo,esterOIds);
-        prefixesRaw.push({loc, name:`(${rName}oxycarbonyl)`});
-      } else if(rinfo.exoType==='ACID_HALIDE'){
-        prefixesRaw.push({loc, name:`(${SUBST_PREFIX[rinfo.haloEl]||'halo'}carbonyl)`});
-      } else if(map[rinfo.exoType]){
-        prefixesRaw.push({loc, name:map[rinfo.exoType]});
-      }
-    }
-    adj[rid].filter(nb=> !ringSet.has(nb.id) && atomById(atoms,nb.id).el==='C' && !(rinfo&&rinfo.exoCarbonId===nb.id)).forEach(nb=>{
-      prefixesRaw.push({loc, name: nameBranch(atoms,bonds,adj,cAdjAll,nb.id,rid,funcInfo,esterOIds)});
-    });
-  });
+  const prefixesRaw = chosen.namedPrefixes || buildPrefixesFor(chosen.seq, chosen.posOf);
 
   let stem = 'cyclo' + buildUnsaturatedStem(n, chosen.dbl, chosen.trp);
   let suffixStr = '', esterPrefixText = '', aminePrefixText = '';
@@ -1639,7 +1675,14 @@ function nameMonocyclic(atoms,bonds,adj,cAdjAll,ring,funcInfo){
     const haloEl = ringInfo[principalRingAtoms[0]].haloEl;
     suffixStr = buildRingSuffix(chosen.principalLocs, HALWORD[haloEl]||'carbonyl halide');
   }
-  else if(principalType==='AMIDE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxamide'); }
+  else if(principalType==='AMIDE'){
+    suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxamide');
+    const exoC0 = ringInfo[principalRingAtoms[0]] && ringInfo[principalRingAtoms[0]].exoCarbonId;
+    if(exoC0!=null){
+      const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdjAll,funcInfo[exoC0].nId,exoC0,funcInfo,esterOIds);
+      if(aNames.length) aminePrefixText = aminoNParentPrefix(aNames);
+    }
+  }
   else if(principalType==='NITRILE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carbonitrile'); }
   else if(principalType==='CHO'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carbaldehyde'); }
   else if(principalType==='KETONE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'one'); }
@@ -1674,7 +1717,8 @@ function nameMonocyclic(atoms,bonds,adj,cAdjAll,ring,funcInfo){
     }).join('-');
   }
 
-  const core = `${esterPrefixText}${aminePrefixText}${prefixJoined}${stem}${suffixStr}`;
+  const joiner2 = (aminePrefixText && prefixJoined) ? '-' : '';
+  const core = `${esterPrefixText}${aminePrefixText}${joiner2}${prefixJoined}${stem}${suffixStr}`;
   let note = 'Best-effort IUPAC-style name for a single carbocyclic ring: lowest locants to the principal group, then ring unsaturation, then substituents (a single instance of the principal group is left unnumbered, e.g. "cyclohexanol").';
   note += ' Exocyclic functional groups are recognized when attached directly to the ring; groups further down a branch are read as plain alkyl.';
   return {name: core, note};
@@ -1739,11 +1783,35 @@ function nameMolecule(atoms,bonds){
   }
 
   if(rings.length===1){
+    const ring0 = rings[0];
     const benzeneRings = rings.filter(r=>isBenzeneRing(r,atoms,bonds));
-    if(benzeneRings.length===1){
+    const isArom = benzeneRings.length===1;
+    const ringSet0 = new Set(ring0);
+    const ringDirectPrincipal = ringHasDirectPrincipal(ring0,adj,funcInfo) || ring0.some(rid=>{
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,new Set(),new Set());
+      return s.oh || s.amino || s.sh;
+    });
+    if(!ringDirectPrincipal){
+      const anyPrincipalElsewhere = Object.keys(funcInfo).length>0 || atoms.some(a=>{
+        if(a.el!=='C' || ringSet0.has(a.id)) return false;
+        const s = substituentsOnCarbon(atoms,adj,cAdjAll,a.id,new Set(),new Set());
+        return s.oh || s.amino || s.sh;
+      });
+      if(anyPrincipalElsewhere) return nameAcyclic(atoms,bonds,adj);
+      const chainOnlyCarbons = atoms.filter(a=>a.el==='C' && !ringSet0.has(a.id));
+      if(chainOnlyCarbons.length){
+        const safeCAdj = {};
+        chainOnlyCarbons.forEach(c=> safeCAdj[c.id] = cAdjAll[c.id].filter(n=>!ringSet0.has(n.id)));
+        const f1 = farthest(safeCAdj, chainOnlyCarbons[0].id, new Set());
+        const f2 = farthest(safeCAdj, f1.node, new Set());
+        const longestChainLen = f2.dist+1;
+        if(longestChainLen > ring0.length) return nameAcyclic(atoms,bonds,adj);
+      }
+    }
+    if(isArom){
       return nameAromatic(atoms,bonds,adj,cAdjAll,benzeneRings[0],funcInfo);
     }
-    return nameMonocyclic(atoms,bonds,adj,cAdjAll,rings[0],funcInfo);
+    return nameMonocyclic(atoms,bonds,adj,cAdjAll,ring0,funcInfo);
   }
   return nameAcyclic(atoms,bonds,adj);
 }
@@ -1785,7 +1853,7 @@ async function restoreState(){
 function setSaveBadge(state){
   const el = document.getElementById('saveBadge');
   if(!el) return;
-  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ unsaved', local:'○ ashish/oirin'};
+  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ unsaved', local:'○ local only'};
   el.textContent = map[state] || map.local;
 }
 
