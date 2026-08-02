@@ -48,7 +48,7 @@
   .grp.groups button{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12.5px;color:var(--violet);}
   .grp.groups button:hover{background:#2e2038;}
 
-  .stage{flex:1;position:relative;overflow:hidden;background:var(--paper);touch-action:none;min-height:0;}
+  .stage{flex:1;position:relative;overflow:hidden;background:var(--paper);touch-action:none;min-height:180px;}
   canvas{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none;}
 
   .hint{position:absolute;top:12px;left:14px;right:14px;font-size:11.5px;color:#5a6470;background:#ffffffcc;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);padding:7px 10px;border-radius:8px;font-family:'JetBrains Mono',monospace;pointer-events:none;line-height:1.5;transition:opacity .2s ease;}
@@ -60,7 +60,7 @@
   .popup{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px;display:flex;gap:4px;flex-wrap:wrap;max-width:220px;box-shadow:0 10px 30px rgba(0,0,0,.4);z-index:20;}
   .popup button{padding:8px 10px;font-family:'JetBrains Mono',monospace;font-weight:700;min-height:auto;}
 
-  .readout{border-top:1px solid var(--line);background:linear-gradient(180deg,#12151b,#0c0e12);padding:14px 18px calc(16px + var(--safe-b));min-height:70px;position:relative;}
+  .readout{border-top:1px solid var(--line);background:linear-gradient(180deg,#12151b,#0c0e12);padding:14px 18px calc(16px + var(--safe-b));min-height:70px;max-height:52vh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;position:relative;}
   .readout .row1{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;}
   .readout .eyebrow{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--teal);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;}
   .readout .name{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:20px;color:var(--text);letter-spacing:0.02em;word-break:break-word;}
@@ -224,8 +224,8 @@ function render(){
   const gh = document.getElementById('groupHint');
   if(gh){
     gh.textContent = (selectedAtom && selectedAtom.el==='C')
-      ? ''
-      : '';
+      ? 'will attach to the selected (amber) carbon'
+      : 'select a carbon first, or tap a group to start a fresh fragment';
   }
   ctx.clearRect(0,0,w,h);
   ctx.strokeStyle = '#d3dbe0';
@@ -2054,7 +2054,7 @@ async function restoreState(){
 function setSaveBadge(state){
   const el = document.getElementById('saveBadge');
   if(!el) return;
-  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ ashish/ourin', local:'○ ashish/ourin'};
+  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ ourin', local:'○ ashish/ourin'};
   el.textContent = map[state] || map.local;
 }
 
