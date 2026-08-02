@@ -224,8 +224,8 @@ function render(){
   const gh = document.getElementById('groupHint');
   if(gh){
     gh.textContent = (selectedAtom && selectedAtom.el==='C')
-      ? 'will attach to the selected (amber) carbon'
-      : 'select a carbon first, or tap a group to start a fresh fragment';
+      ? ''
+      : '';
   }
   ctx.clearRect(0,0,w,h);
   ctx.strokeStyle = '#d3dbe0';
