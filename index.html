@@ -70,6 +70,17 @@
   .readout .formula sub{font-size:10px;}
   .copyBtn{background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;flex:0 0 auto;min-height:auto;}
   .copyBtn:hover{background:#2a3038;color:var(--text);}
+  .explainBox{margin-top:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);overflow:hidden;max-width:820px;}
+  .explainHead{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer;user-select:none;}
+  .explainHead .lbl{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--violet);letter-spacing:0.1em;text-transform:uppercase;}
+  .explainHead .chev{color:var(--muted);font-size:11px;transition:transform .15s ease;}
+  .explainBox.collapsed .chev{transform:rotate(-90deg);}
+  .explainList{list-style:none;counter-reset:step;margin:0;padding:0 12px 12px;}
+  .explainBox.collapsed .explainList{display:none;}
+  .explainList li{counter-increment:step;position:relative;padding:5px 0 5px 26px;font-size:12.5px;line-height:1.55;color:#c7cdd6;border-top:1px solid #ffffff0d;}
+  .explainList li:first-child{border-top:none;}
+  .explainList li::before{content:counter(step);position:absolute;left:0;top:6px;width:18px;height:18px;border-radius:5px;background:#1f2733;color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+  .explainList code{font-family:'JetBrains Mono',monospace;background:#0000004d;padding:1px 5px;border-radius:4px;color:var(--amber);font-size:12px;}
 
   @media (max-width:520px){
     header h1{font-size:17px;}
@@ -160,6 +171,13 @@
         <div class="formula" id="formulaOut"></div>
         <button class="copyBtn" id="copyBtn" style="display:none;">⧉ Copy name</button>
       </div>
+    </div>
+    <div class="explainBox" id="explainBox" style="display:none;">
+      <div class="explainHead" id="explainHead">
+        <span class="lbl">⚡ how this name was built</span>
+        <span class="chev">▾</span>
+      </div>
+      <ol class="explainList" id="explainList"></ol>
     </div>
     <div class="note" id="noteOut"></div>
   </div>
@@ -559,7 +577,10 @@ function resetReadout(){
   document.getElementById('noteOut').textContent = '';
   document.getElementById('formulaOut').textContent = '';
   document.getElementById('copyBtn').style.display = 'none';
+  document.getElementById('explainBox').style.display = 'none';
+  document.getElementById('explainList').innerHTML = '';
 }
+function mdCode(s){ return s.replace(/`([^`]+)`/g, '<code>$1</code>'); }
 function runNaming(){
   const result = nameMolecule(atoms, bonds);
   const out = document.getElementById('nameOut');
@@ -569,7 +590,21 @@ function runNaming(){
   const f = molecularFormula(atoms, bonds);
   document.getElementById('formulaOut').innerHTML = f ? formulaHTML(f) : '';
   document.getElementById('copyBtn').style.display = atoms.length ? 'inline-flex' : 'none';
+
+  const explainBox = document.getElementById('explainBox');
+  const explainList = document.getElementById('explainList');
+  if(result.explain && result.explain.length){
+    explainList.innerHTML = result.explain.map(step=>`<li>${mdCode(step)}</li>`).join('');
+    explainBox.style.display = 'block';
+    explainBox.classList.remove('collapsed');
+  } else {
+    explainBox.style.display = 'none';
+    explainList.innerHTML = '';
+  }
 }
+document.getElementById('explainHead').addEventListener('click', ()=>{
+  document.getElementById('explainBox').classList.toggle('collapsed');
+});
 function formulaHTML(f){
   return f.replace(/(\d+)/g, '<sub>$1</sub>');
 }
@@ -1141,10 +1176,27 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
   });
   const otherSubs = subs.filter(s=> s!==principal);
 
+  const HALIDE_PREFIX = {F:'fluoro',Cl:'chloro',Br:'bromo',I:'iodo'};
+  otherSubs.forEach(s=>{
+    let nm = s.label;
+    if(nm==='__COOH__') nm='carboxy';
+    else if(nm==='__CHO__') nm='formyl';
+    else if(nm==='__ESTER__') nm='(alkoxycarbonyl)';
+    else if(nm==='__AMIDE__'){
+      const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,funcInfo[s.atomId].nId,s.atomId,funcInfo,esterOIds);
+      nm = aNames.length ? `(${aminoNParentPrefix(aNames)}carbamoyl)` : 'carbamoyl';
+    }
+    else if(nm==='__NITRILE__') nm='cyano';
+    else if(nm==='__ACIDHALIDE__') nm=`(${HALIDE_PREFIX[s.haloEl]||'halo'}carbonyl)`;
+    else if(nm==='__KETONE__') nm='oxo';
+    else if(nm==='amino') nm = formatAminoPrefix(s.aminoNames);
+    s.finalName = nm;
+  });
+
   function scoreForRotation(rotate, flip){
     return subs.map(s=>{ let p=s.pos; if(flip) p=(6-p)%6; p=(p-rotate+12)%6; return p; });
   }
-  let best=null;
+  let candidates = [];
   for(let rotate=0; rotate<6; rotate++){
     for(let f=0; f<2; f++){
       const locants = scoreForRotation(rotate, f===1);
@@ -1153,37 +1205,39 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
         if(pLoc!==0) continue;
       }
       const key = [...locants].sort((a,b)=>a-b).join(',');
-      if(!best || key < best.key) best = {rotate, flip:f===1, locants, key};
+      candidates.push({rotate, flip:f===1, locants, key});
     }
   }
-  if(!best){
+  if(!candidates.length){
     for(let rotate=0; rotate<6; rotate++){
       for(let f=0; f<2; f++){
         const locants = scoreForRotation(rotate, f===1);
         const key = [...locants].sort((a,b)=>a-b).join(',');
-        if(!best || key < best.key) best = {rotate, flip:f===1, locants, key};
+        candidates.push({rotate, flip:f===1, locants, key});
       }
     }
   }
+  let bestKey = candidates[0].key;
+  candidates.forEach(c=>{ if(c.key<bestKey) bestKey=c.key; });
+  candidates = candidates.filter(c=>c.key===bestKey);
+  let usedAromaAlphaTieBreak = false;
+  if(candidates.length>1 && otherSubs.length){
+    usedAromaAlphaTieBreak = true;
+    candidates.forEach(c=>{
+      const grouped = {};
+      otherSubs.forEach(s=>{ const loc=c.locants[subs.indexOf(s)]; grouped[s.finalName]=grouped[s.finalName]||[]; grouped[s.finalName].push(loc); });
+      const score=[];
+      sortedByAlpha(Object.keys(grouped)).forEach(nm=> grouped[nm].sort((a,b)=>a-b).forEach(l=>score.push(l)));
+      c.alphaScore = score;
+    });
+    let bestAlpha = candidates[0].alphaScore;
+    candidates.forEach(c=>{ if(compareLocantArr(c.alphaScore,bestAlpha)<0) bestAlpha=c.alphaScore; });
+    candidates = candidates.filter(c=> compareLocantArr(c.alphaScore,bestAlpha)===0);
+  }
+  const best = candidates[0];
   const finalLocants = {}; subs.forEach((s,i)=> finalLocants[i] = best.locants[i]+1);
 
-  const HALIDE_PREFIX = {F:'fluoro',Cl:'chloro',Br:'bromo',I:'iodo'};
-  const rawPrefixes = otherSubs.map(s=>{
-    const loc = finalLocants[subs.indexOf(s)];
-    let nm = s.label;
-    if(nm==='__COOH__') nm='carboxy';
-    if(nm==='__CHO__') nm='formyl';
-    if(nm==='__ESTER__') nm='(alkoxycarbonyl)';
-    if(nm==='__AMIDE__'){
-      const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,funcInfo[s.atomId].nId,s.atomId,funcInfo,esterOIds);
-      nm = aNames.length ? `(${aminoNParentPrefix(aNames)}carbamoyl)` : 'carbamoyl';
-    }
-    if(nm==='__NITRILE__') nm='cyano';
-    if(nm==='__ACIDHALIDE__') nm=`(${HALIDE_PREFIX[s.haloEl]||'halo'}carbonyl)`;
-    if(nm==='__KETONE__') nm='oxo';
-    if(nm==='amino') nm = formatAminoPrefix(s.aminoNames);
-    return {loc, nm};
-  });
+  const rawPrefixes = otherSubs.map(s=> ({loc: finalLocants[subs.indexOf(s)], nm: s.finalName}));
   const groupedAr = {};
   rawPrefixes.forEach(p=>{ groupedAr[p.nm] = groupedAr[p.nm] || []; groupedAr[p.nm].push(p.loc); });
   const prefixJoin = sortedByAlpha(Object.keys(groupedAr)).map(nm=>{
@@ -1193,52 +1247,81 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
   }).join('-');
 
   const soleSub = subs.length===1;
+  function buildAromExplain(groupDescLine, finalName){
+    const lines = ['This is a benzene ring (aromatic — 6 carbons with alternating double bonds) → base name `benzene`.'];
+    if(groupDescLine) lines.push(groupDescLine);
+    if(Object.keys(groupedAr).length){
+      sortedByAlpha(Object.keys(groupedAr)).forEach(nm=>{
+        const locs = groupedAr[nm].sort((a,b)=>a-b);
+        lines.push(`Substituent \`${nm}\` found at position${locs.length>1?'s':''} \`${locs.join(',')}\`.`);
+      });
+      if(usedAromaAlphaTieBreak && Object.keys(groupedAr).length>=2){
+        lines.push(`Two numbering directions gave the exact same set of locants here, so the tie was broken by giving the lower locant to whichever substituent comes first alphabetically: \`${sortedByAlpha(Object.keys(groupedAr))[0]}\`.`);
+      }
+    }
+    lines.push(`Final name: \`${finalName}\`.`);
+    return lines;
+  }
 
   if(!principal){
-    if(subs.length===0) return {name:'benzene', note:'Plain aromatic ring — an arene.'};
+    if(subs.length===0) return {name:'benzene', note:'Plain aromatic ring — an arene.', explain:['This is a benzene ring (aromatic — 6 carbons with alternating double bonds) with no substituents at all → the name is simply `benzene`.']};
     if(soleSub){
       const only = subs[0];
-      if(only.label==='methyl') return {name:'toluene', note:'Common retained IUPAC name for methylbenzene.'};
-      if(only.label==='phenyl') return {name:'biphenyl', note:'Two unsubstituted benzene rings joined by a single bond — the retained ring-assembly name.'};
-      return {name:`${only.label}benzene`, note:'Mono-substituted benzene ring — no locant needed (all ring positions are equivalent for a single substituent).'};
+      if(only.label==='methyl') return {name:'toluene', note:'Common retained IUPAC name for methylbenzene.', explain:['This is a benzene ring with exactly one substituent: `methyl`.', 'Methylbenzene has its own retained IUPAC name, `toluene`, which is preferred over the systematic form.', 'Final name: `toluene`.']};
+      if(only.label==='phenyl') return {name:'biphenyl', note:'Two unsubstituted benzene rings joined by a single bond — the retained ring-assembly name.', explain:['This is a benzene ring whose only "substituent" is a second, unsubstituted benzene ring attached by a single bond.', 'Two benzene rings joined this way have their own retained name, `biphenyl`, instead of being written as "phenylbenzene".', 'Final name: `biphenyl`.']};
+      return {name:`${only.label}benzene`, note:'Mono-substituted benzene ring — no locant needed (all ring positions are equivalent for a single substituent).', explain:[`This is a benzene ring with exactly one substituent: \`${only.label}\`.`, 'With only one substituent, every ring position is equivalent by symmetry, so no locant number is needed — it just attaches directly to "benzene".', `Final name: \`${only.label}benzene\`.`]};
     }
-    return {name: `${prefixJoin}benzene`, note:'Substituted benzene (arene). Lowest locant set applied.'};
+    return {name: `${prefixJoin}benzene`, note:'Substituted benzene (arene). Lowest locant set applied.', explain: buildAromExplain('No functional group (–OH, –COOH, C=O, –NH2, etc.) is attached, so this stays a plain substituted benzene — no suffix beyond "benzene" itself.', `${prefixJoin}benzene`)};
   }
 
   if(principal.label==='__COOH__'){
-    return {name:`${prefixJoin}benzoic acid`, note:'Aromatic carboxylic acid, named as a substituted benzoic acid.'};
+    const nm = `${prefixJoin}benzoic acid`;
+    return {name:nm, note:'Aromatic carboxylic acid, named as a substituted benzoic acid.', explain: buildAromExplain('The ring carries a –COOH group directly attached — the highest-priority functional group present. Benzene + –COOH has the retained name `benzoic acid` (equivalent to "benzenecarboxylic acid").', nm)};
   }
   if(principal.label==='__CHO__'){
-    return {name:`${prefixJoin}benzaldehyde`, note:'Aromatic aldehyde, named as a substituted benzaldehyde.'};
+    const nm = `${prefixJoin}benzaldehyde`;
+    return {name:nm, note:'Aromatic aldehyde, named as a substituted benzaldehyde.', explain: buildAromExplain('The ring carries a –CHO group directly attached — the highest-priority functional group present. Benzene + –CHO has the retained name `benzaldehyde`.', nm)};
   }
   if(principal.label==='__AMIDE__'){
     const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdj,funcInfo[principal.atomId].nId,principal.atomId,funcInfo,esterOIds);
     const nPrefix = aNames.length ? aminoNParentPrefix(aNames) : '';
     const joiner3 = (nPrefix && prefixJoin) ? '-' : '';
-    return {name:`${nPrefix}${joiner3}${prefixJoin}benzamide`, note:'Aromatic amide, named as a substituted benzamide (N- locants mark substituents on the amide nitrogen itself).'};
+    const nm = `${nPrefix}${joiner3}${prefixJoin}benzamide`;
+    const groupLine = 'The ring carries an amide (–C(=O)–N) directly attached — the highest-priority group present. Benzene + amide has the retained name `benzamide`.'
+      + (aNames.length ? ` The amide nitrogen itself carries substituent(s), cited up front with \`N-\` locants: \`${nPrefix}\`.` : '');
+    return {name:nm, note:'Aromatic amide, named as a substituted benzamide (N- locants mark substituents on the amide nitrogen itself).', explain: buildAromExplain(groupLine, nm)};
   }
   if(principal.label==='__NITRILE__'){
-    return {name:`${prefixJoin}benzonitrile`, note:'Aromatic nitrile, named as a substituted benzonitrile.'};
+    const nm = `${prefixJoin}benzonitrile`;
+    return {name:nm, note:'Aromatic nitrile, named as a substituted benzonitrile.', explain: buildAromExplain('The ring carries a nitrile (–C≡N) directly attached — the highest-priority group present. Benzene + nitrile has the retained name `benzonitrile`.', nm)};
   }
   if(principal.label==='__ACIDHALIDE__'){
     const HALWORD = {F:'benzoyl fluoride',Cl:'benzoyl chloride',Br:'benzoyl bromide',I:'benzoyl iodide'};
-    return {name:`${prefixJoin}${HALWORD[principal.haloEl]||'benzoyl halide'}`, note:'Aromatic acid halide, named as a substituted benzoyl halide.'};
+    const word = HALWORD[principal.haloEl]||'benzoyl halide';
+    const nm = `${prefixJoin}${word}`;
+    return {name:nm, note:'Aromatic acid halide, named as a substituted benzoyl halide.', explain: buildAromExplain(`The ring carries an acid halide (–C(=O)–X) directly attached — the highest-priority group present. Benzene + this group has the retained name \`${word}\`.`, nm)};
   }
   if(principal.label==='hydroxy'){
-    return {name:`${prefixJoin}phenol`, note:'Aromatic alcohol, named as a substituted phenol.'};
+    const nm = `${prefixJoin}phenol`;
+    return {name:nm, note:'Aromatic alcohol, named as a substituted phenol.', explain: buildAromExplain('The ring carries a hydroxyl (–OH) directly attached — the highest-priority group present. Benzene + –OH has the retained name `phenol`.', nm)};
   }
   if(principal.label==='amino'){
     const nPrefix2 = aminoNParentPrefix(principal.aminoNames||[]);
     const joiner4 = (nPrefix2 && prefixJoin) ? '-' : '';
-    return {name:`${nPrefix2}${joiner4}${prefixJoin}aniline`, note:'Aromatic amine, named as a substituted aniline (N- locants mark substituents on the amine nitrogen itself).'};
+    const nm = `${nPrefix2}${joiner4}${prefixJoin}aniline`;
+    const groupLine = 'The ring carries an amine directly attached — the highest-priority group present. Benzene + amine has the retained name `aniline`.'
+      + ((principal.aminoNames||[]).length ? ` The amine nitrogen itself carries substituent(s), cited up front with \`N-\` locants: \`${nPrefix2}\`.` : '');
+    return {name:nm, note:'Aromatic amine, named as a substituted aniline (N- locants mark substituents on the amine nitrogen itself).', explain: buildAromExplain(groupLine, nm)};
   }
   if(principal.label==='sulfanyl'){
-    return {name:`${prefixJoin}benzenethiol`, note:'Aromatic thiol, named as a substituted benzenethiol.'};
+    const nm = `${prefixJoin}benzenethiol`;
+    return {name:nm, note:'Aromatic thiol, named as a substituted benzenethiol.', explain: buildAromExplain('The ring carries a thiol (–SH) directly attached — the highest-priority group present. Benzene + –SH is named systematically as `benzenethiol`.', nm)};
   }
   if(principal.label==='__ESTER__'){
     const esterOId = funcInfo[principal.atomId] && funcInfo[principal.atomId].esterO;
     const rName = nameRGroup(atoms,bonds,adj,cAdj,principal.rGroupC,esterOId,funcInfo,esterOIds);
-    return {name:`${rName} ${prefixJoin}benzoate`, note:'Aromatic ester, named as an alkyl (or cycloalkyl) benzoate.'};
+    const nm = `${rName} ${prefixJoin}benzoate`;
+    return {name:nm, note:'Aromatic ester, named as an alkyl (or cycloalkyl) benzoate.', explain: buildAromExplain(`The ring carries an ester linkage directly attached — the highest-priority group present. It's named as "benzoate", with the alcohol side (\`${rName}\`) written as a separate word in front.`, nm)};
   }
   if(principal.label==='__KETONE__'){
     if(!soleSub){
@@ -1257,7 +1340,13 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
     }
     let stem = buildUnsaturatedStem(chainPath.length, dbl, trp);
     if(/e$/.test(stem)) stem = stem.slice(0,-1);
-    return {name:`1-phenyl${stem}-1-one`, note:'Aryl ketone: the R-chain is the parent, the ring is cited as a phenyl prefix on the carbonyl carbon.'};
+    const nm = `1-phenyl${stem}-1-one`;
+    return {name:nm, note:'Aryl ketone: the R-chain is the parent, the ring is cited as a phenyl prefix on the carbonyl carbon.', explain:[
+      'The ring carries a ketone (C=O) attached via one extra carbon, and that carbon also continues into its own chain — so here the CHAIN becomes the parent instead of the ring.',
+      `That chain is ${chainPath.length} carbon${chainPath.length===1?'':'s'} long, with the ketone carbon fixed at position 1 → base name \`${stem}-1-one\`.`,
+      'The ring itself is cited as a `phenyl` prefix on that carbon, since it\'s just a substituent from the chain\'s point of view.',
+      `Final name: \`${nm}\`.`
+    ]};
   }
   return {name:`${prefixJoin}benzene`, note:''};
 }
@@ -1485,7 +1574,55 @@ function nameAcyclic(atoms,bonds,adj){
   const hasSecAmine = prefixesRaw.some(p=>p.name==='amino') && !suffixStr.includes('amine');
   if(hasSecAmine) note += ' Secondary/tertiary amine branches are flagged as "amino" without full N-substituent detail.';
 
-  return {name: core, note};
+  const PRINCIPAL_DESC_CHAIN = {
+    COOH:{group:'a –COOH (carboxylic acid) group', suffixDesc:'"-oic acid" replaces the final "e"'},
+    ESTER:{group:'an ester linkage (–C(=O)–O–)', suffixDesc:'"-oate" replaces the final "e", with the alcohol side named as a separate word in front'},
+    ACID_HALIDE:{group:'an acid halide (–C(=O)–X)', suffixDesc:'"-oyl halide" replaces the final "e"'},
+    AMIDE:{group:'an amide (–C(=O)–N)', suffixDesc:'"-amide" replaces the final "e"'},
+    NITRILE:{group:'a nitrile (–C≡N)', suffixDesc:'"-nitrile" replaces the final "e"'},
+    CHO:{group:'an aldehyde (–CHO)', suffixDesc:'"-al" replaces the final "e"'}
+  };
+  const explain = [];
+  explain.push(`The longest carbon chain here is ${len} carbon${len===1?'':'s'} long → the base name is \`${(ALKANE[len]||len+'-carbon')+'ane'}\`.`);
+  if(principalType && PRINCIPAL_DESC_CHAIN[principalType]){
+    const d = PRINCIPAL_DESC_CHAIN[principalType];
+    const plocs = principalCarbons.map(c=>posOf[c]).filter(Boolean);
+    explain.push(`The chain was chosen so it passes through ${d.group} — the highest-priority group present — landing at position \`${plocs[0]}\` (chain numbering starts from whichever end gives it the lowest locant). That's why ${d.suffixDesc}.`);
+  } else if(ketoneLocants.length){
+    explain.push(`A ketone (C=O) is the highest-priority group present, numbered to get the lowest locant: \`${ketoneLocants.join(',')}\`. That's why "-one" is added.`);
+  } else {
+    const ohEntries = prefixesRaw.filter(p=>p.type==='hydroxy');
+    const aminoEntries = prefixesRaw.filter(p=>p.type==='amino');
+    const shEntries = prefixesRaw.filter(p=>p.type==='sulfanyl');
+    if(ohEntries.length){ explain.push(`A hydroxyl (–OH) is the highest-priority group present, numbered at \`${ohEntries.map(p=>p.loc).join(',')}\` — that's why "-ol" is added.`); }
+    else if(aminoEntries.length){ explain.push(`An amine is the highest-priority group present, numbered at \`${aminoEntries.map(p=>p.loc).join(',')}\` — that's why "-amine" is added.`); }
+    else if(shEntries.length){ explain.push(`A thiol (–SH) is the highest-priority group present, numbered at \`${shEntries.map(p=>p.loc).join(',')}\` — that's why "-thiol" is added.`); }
+    else { explain.push('No functional group is present here, so this is a plain alkane/alkene/alkyne — no suffix beyond the chain name itself.'); }
+  }
+  if(dbl.length || trp.length){
+    const parts=[];
+    if(dbl.length) parts.push(`double bond${dbl.length>1?'s':''} at \`${dbl.join(',')}\``);
+    if(trp.length) parts.push(`triple bond${trp.length>1?'s':''} at \`${trp.join(',')}\``);
+    explain.push(`Chain unsaturation gets the next-lowest locants: ${parts.join(' and ')}.`);
+  }
+  if(prefixStrs.length){
+    sortedByAlpha(Object.keys(grouped)).forEach(nm=>{
+      const locs = grouped[nm].sort((a,b)=>a-b);
+      explain.push(`Substituent \`${nm}\` found at position${locs.length>1?'s':''} \`${locs.join(',')}\`.`);
+    });
+  }
+  const finalParts=[];
+  if(esterPrefix) finalParts.push(`\`${esterPrefix.trim()}\` (the alcohol side of the ester)`);
+  if(aminePrefixText) finalParts.push(`\`${aminePrefixText}\` (substituents on the nitrogen)`);
+  if(prefixJoined) finalParts.push(`\`${prefixJoined}\``);
+  if(finalParts.length){
+    finalParts.push(`\`${stem}${suffixStr}\``);
+    explain.push(`Putting it together: ${finalParts.join(' + ')} → \`${core}\`.`);
+  } else {
+    explain.push(`No substituent prefixes are needed here — the final name is simply \`${core}\`.`);
+  }
+
+  return {name: core, note, explain};
 }
 
 /* ============================== ANHYDRIDES (functional-class name; whole-molecule special case) ============================== */
@@ -1501,10 +1638,20 @@ function nameAnhydride(atoms,bonds,adj,cAdjAll,funcInfo){
   }
   const name1 = acylStem(c1), name2 = acylStem(c2);
   if(name1===name2){
-    return {name:`${name1} anhydride`, note:'Symmetrical carboxylic acid anhydride, named by functional class nomenclature.'};
+    const nm = `${name1} anhydride`;
+    return {name:nm, note:'Symmetrical carboxylic acid anhydride, named by functional class nomenclature.', explain:[
+      'Two acyl groups (–C(=O)–) are joined through one shared oxygen: an anhydride, formed as if two identical carboxylic acids had lost a water molecule between them.',
+      `Each acyl arm is the same length → both are named \`${name1}\`.`,
+      `Anhydrides are named by functional class: acid name + "anhydride". Since both sides match, it's just \`${nm}\` (not repeated).`
+    ]};
   }
   const sorted = [name1,name2].sort();
-  return {name:`${sorted[0]} ${sorted[1]} anhydride`, note:'Unsymmetrical carboxylic acid anhydride — acyl groups cited alphabetically.'};
+  const nm2 = `${sorted[0]} ${sorted[1]} anhydride`;
+  return {name:nm2, note:'Unsymmetrical carboxylic acid anhydride — acyl groups cited alphabetically.', explain:[
+    'Two acyl groups (–C(=O)–) are joined through one shared oxygen: an anhydride, formed as if two carboxylic acids had lost a water molecule between them.',
+    `The two acyl arms are different lengths → \`${name1}\` and \`${name2}\`.`,
+    `Anhydrides are named by functional class: both acid names (alphabetical order) + "anhydride" → \`${nm2}\`.`
+  ]};
 }
 
 /* ============================== MONOCYCLIC (non-aromatic ring) NAMING ============================== */
@@ -1652,7 +1799,9 @@ function nameMonocyclic(atoms,bonds,adj,cAdjAll,ring,funcInfo){
   candidates = filterBest(candidates,'principalLocs');
   candidates = filterBest(candidates,'unsat');
   candidates = filterBest(candidates,'subLocs');
+  let usedAlphaTieBreak = false;
   if(candidates.length>1){
+    usedAlphaTieBreak = true;
     candidates.forEach(c=>{ c.namedPrefixes = buildPrefixesFor(c.seq, c.posOf); c.alphaScore = alphaTieBreakScore(c.namedPrefixes); });
     candidates = filterBest(candidates,'alphaScore');
   }
@@ -1721,7 +1870,59 @@ function nameMonocyclic(atoms,bonds,adj,cAdjAll,ring,funcInfo){
   const core = `${esterPrefixText}${aminePrefixText}${joiner2}${prefixJoined}${stem}${suffixStr}`;
   let note = 'Best-effort IUPAC-style name for a single carbocyclic ring: lowest locants to the principal group, then ring unsaturation, then substituents (a single instance of the principal group is left unnumbered, e.g. "cyclohexanol").';
   note += ' Exocyclic functional groups are recognized when attached directly to the ring; groups further down a branch are read as plain alkyl.';
-  return {name: core, note};
+
+  const PRINCIPAL_DESC = {
+    COOH:{group:'a –COOH (carboxylic acid) group', suffixDesc:'"-carboxylic acid" is added directly to the ring name'},
+    ESTER:{group:'an ester linkage (–C(=O)–O–)', suffixDesc:'"-carboxylate" is added, with the alcohol side named as a separate word in front'},
+    ACID_HALIDE:{group:'an acid halide (–C(=O)–X)', suffixDesc:'"-carbonyl halide" is added'},
+    AMIDE:{group:'an amide (–C(=O)–N)', suffixDesc:'"-carboxamide" is added'},
+    NITRILE:{group:'a nitrile (–C≡N)', suffixDesc:'"-carbonitrile" is added'},
+    CHO:{group:'an aldehyde (–CHO)', suffixDesc:'"-carbaldehyde" is added'},
+    KETONE:{group:'a ketone (ring C=O)', suffixDesc:'"-one" is added'},
+    OH_RING:{group:'a hydroxyl (–OH) directly on the ring', suffixDesc:'"-ol" is added'},
+    NH2_RING:{group:'an amine directly on the ring', suffixDesc:'"-amine" is added'},
+    SH_RING:{group:'a thiol (–SH) directly on the ring', suffixDesc:'"-thiol" is added'}
+  };
+  const explain = [];
+  explain.push(`This is a single carbocyclic ring with ${n} carbon${n===1?'':'s'} → the base ring name is \`${'cyclo'+(ALKANE[n]||n+'-carbon')+'ane'}\`.`);
+  if(principalType && PRINCIPAL_DESC[principalType]){
+    const d = PRINCIPAL_DESC[principalType];
+    const locStr = chosen.principalLocs.length>1 ? `positions \`${chosen.principalLocs.join(',')}\`` : `position \`${chosen.principalLocs[0]}\``;
+    explain.push(`The ring carries ${d.group} — the highest-priority functional group present, so it becomes the principal characteristic group and its ring carbon gets the lowest possible locant: ${locStr}. That's why ${d.suffixDesc}.`);
+  } else {
+    explain.push('No functional group (like –OH, –COOH, C=O, –NH2) is attached to the ring, so this is named as a plain substituted cycloalkane — no suffix beyond the ring name itself.');
+  }
+  if(chosen.dbl.length || chosen.trp.length){
+    const parts = [];
+    if(chosen.dbl.length) parts.push(`double bond${chosen.dbl.length>1?'s':''} at \`${chosen.dbl.join(',')}\``);
+    if(chosen.trp.length) parts.push(`triple bond${chosen.trp.length>1?'s':''} at \`${chosen.trp.join(',')}\``);
+    explain.push(`Next priority after the principal group is the lowest locants for ring unsaturation: ${parts.join(' and ')}.`);
+  }
+  let alphaNames = [];
+  if(prefixesRaw.length){
+    const grouped = {};
+    prefixesRaw.forEach(p=>{ grouped[p.name]=grouped[p.name]||[]; grouped[p.name].push(p.loc); });
+    alphaNames = sortedByAlpha(Object.keys(grouped));
+    alphaNames.forEach(nm=>{
+      const locs = grouped[nm].sort((a,b)=>a-b);
+      explain.push(`Substituent \`${nm}\` found at position${locs.length>1?'s':''} \`${locs.join(',')}\`.`);
+    });
+    if(usedAlphaTieBreak && alphaNames.length>=2){
+      explain.push(`Two numbering directions gave the exact same set of locants here, so the tie was broken by giving the lower locant to whichever substituent comes first alphabetically: \`${alphaNames[0]}\`.`);
+    }
+  }
+  const finalParts = [];
+  if(esterPrefixText) finalParts.push(`\`${esterPrefixText.trim()}\` (the alcohol side of the ester)`);
+  if(aminePrefixText) finalParts.push(`\`${aminePrefixText}\` (substituents on the nitrogen)`);
+  if(prefixJoined) finalParts.push(`\`${prefixJoined}\``);
+  if(finalParts.length){
+    finalParts.push(`\`${stem}${suffixStr}\``);
+    explain.push(`Putting it together: ${finalParts.join(' + ')} → \`${core}\`.`);
+  } else {
+    explain.push(`No substituent prefixes are needed here — the final name is simply \`${core}\`.`);
+  }
+
+  return {name: core, note, explain};
 }
 function ringsShareAtoms(rings){
   for(let i=0;i<rings.length;i++){
@@ -1853,7 +2054,7 @@ async function restoreState(){
 function setSaveBadge(state){
   const el = document.getElementById('saveBadge');
   if(!el) return;
-  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ unsaved', local:'○ ashish/ourin'};
+  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ ashish/ourin', local:'○ ashish/ourin'};
   el.textContent = map[state] || map.local;
 }
 
