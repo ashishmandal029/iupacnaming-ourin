@@ -224,8 +224,8 @@ function render(){
   const gh = document.getElementById('groupHint');
   if(gh){
     gh.textContent = (selectedAtom && selectedAtom.el==='C')
-      ? ''
-      : '';
+      ? 'will attach to the selected (amber) carbon'
+      : 'select a carbon first, or tap a group to start a fresh fragment';
   }
   ctx.clearRect(0,0,w,h);
   ctx.strokeStyle = '#d3dbe0';
@@ -842,11 +842,12 @@ function sortedByAlpha(names){
    forks (tert-butyl etc.), heteroatom substituents (halogens/OH/NH2/SH/nitro/alkoxy) ANYWHERE along
    the branch, unsaturation within the branch, and functional-group carbons (COOH/CHO/ester/amide/
    nitrile/acid halide/ketone) found on the branch. Never silently drops atoms. */
-function nameBranch(atoms, bonds, adj, cAdj, rootId, blockedId, funcInfo, esterOIds){
-  const myRing = findRings(atoms,bonds,adj).find(r=>r.includes(rootId));
+function nameBranch(atoms, bonds, adj, cAdj, rootId, blockedId, funcInfo, esterOIds, isYlidene){
+  const allRings = findRings(atoms,bonds,adj);
+  const myRing = allRings.find(r=>r.includes(rootId));
   if(myRing) return nameRingAsSubstituent(atoms, bonds, adj, cAdj, myRing, funcInfo, rootId, blockedId);
 
-  const far = farthest(cAdj, rootId, new Set([blockedId]));
+  const far = farthest(buildRingSafeCAdj(atoms,bonds,adj,cAdj), rootId, new Set([blockedId]));
   const subPath = far.path;
   const posOf = {}; subPath.forEach((pid,i)=> posOf[pid]=i+1);
   const subSet = new Set(subPath);
@@ -893,22 +894,23 @@ function nameBranch(atoms, bonds, adj, cAdj, rootId, blockedId, funcInfo, esterO
         const fp = funcPrefix(nfi, nb.id);
         if(fp) subPrefixesRaw.push({loc, name:fp});
       } else {
-        subPrefixesRaw.push({loc, name: nameBranch(atoms,bonds,adj,cAdj, nb.id, pid, funcInfo, esterOIds)});
+        subPrefixesRaw.push({loc, name: nameBranch(atoms,bonds,adj,cAdj, nb.id, pid, funcInfo, esterOIds, nb.order===2)});
       }
     });
   });
 
+  const ylSuffix = isYlidene ? 'ylidene' : 'yl';
   let bare;
-  if(subLen<=1){ bare='methyl'; }
+  if(subLen<=1){ bare = isYlidene ? 'methylidene' : 'methyl'; }
   else if(!dbl.length && !trp.length){
-    bare = subLen===2?'ethyl' : subLen===3?'propyl' : (ALKANE[subLen]||(subLen+'-carbon'))+'yl';
+    bare = subLen===2 ? (isYlidene?'ethylidene':'ethyl') : subLen===3 ? (isYlidene?'propylidene':'propyl') : (ALKANE[subLen]||(subLen+'-carbon'))+ylSuffix;
   } else {
     const base = ALKANE[subLen] || `${subLen}carbon`;
     const parts = [];
     if(dbl.length) parts.push(`${dbl.join(',')}-${MULT[dbl.length]||''}en`);
     if(trp.length) parts.push(`${trp.join(',')}-${MULT[trp.length]||''}yn`);
     const needsA = dbl.length>1 || trp.length>1;
-    bare = base + (needsA?'a':'') + '-' + parts.join('-') + '-1-yl';
+    bare = base + (needsA?'a':'') + '-' + parts.join('-') + `-1-${ylSuffix}`;
   }
 
   const grouped = {};
@@ -977,7 +979,7 @@ function nameRingAsSubstituent(atoms, bonds, adj, cAdj, ring, funcInfo, attachRi
     s.halogens.forEach(h=>prefixesRaw.push({loc,name:SUBST_PREFIX[h]}));
     s.alkoxy.forEach(nm=>prefixesRaw.push({loc,name:nm}));
     adj[rid].filter(nb=>!ringSet.has(nb.id) && atomById(atoms,nb.id).el==='C').forEach(nb=>{
-      prefixesRaw.push({loc,name: nameBranch(atoms,bonds,adj,cAdj,nb.id,rid,funcInfo,esterOIds)});
+      prefixesRaw.push({loc,name: nameBranch(atoms,bonds,adj,cAdj,nb.id,rid,funcInfo,esterOIds,nb.order===2)});
     });
   });
   // the attachment carbon's OWN non-ring substituents (besides blockedId) also count
@@ -991,7 +993,7 @@ function nameRingAsSubstituent(atoms, bonds, adj, cAdj, ring, funcInfo, attachRi
     s.halogens.forEach(h=>prefixesRaw.push({loc,name:SUBST_PREFIX[h]}));
     s.alkoxy.forEach(nm=>prefixesRaw.push({loc,name:nm}));
     adj[attachRid].filter(nb=>!ringSet.has(nb.id) && nb.id!==blockedId && atomById(atoms,nb.id).el==='C').forEach(nb=>{
-      prefixesRaw.push({loc,name: nameBranch(atoms,bonds,adj,cAdj,nb.id,attachRid,funcInfo,esterOIds)});
+      prefixesRaw.push({loc,name: nameBranch(atoms,bonds,adj,cAdj,nb.id,attachRid,funcInfo,esterOIds,nb.order===2)});
     });
   }
 
@@ -1021,13 +1023,30 @@ function nameRingAsSubstituent(atoms, bonds, adj, cAdj, ring, funcInfo, attachRi
   return prefixesRaw.length>0 ? `(${bareFull})` : bareFull;
 }
 
+/* A version of cAdj where ring atoms have zero chain-traversal edges — used by any "measure a plain
+   chain's length" search so it never wanders INTO a ring (the ring is instead picked up correctly as
+   a fork/branch at its attachment atom). Without this, farthest() can wander partway into a ring and
+   the recursive branch-naming that follows can loop indefinitely. */
+function buildRingSafeCAdj(atoms, bonds, adj, cAdj){
+  const allRings = findRings(atoms, bonds, adj);
+  const ringAtomSet = new Set();
+  allRings.forEach(r=> r.forEach(id=>ringAtomSet.add(id)));
+  if(!ringAtomSet.size) return cAdj;
+  const safe = {};
+  Object.keys(cAdj).forEach(k=>{
+    const kid = Number(k);
+    safe[kid] = ringAtomSet.has(kid) ? [] : cAdj[kid].filter(n=>!ringAtomSet.has(n.id));
+  });
+  return safe;
+}
+
 /* Names an ester's R-group (the "alkyl" in "alkyl ...oate"), correctly handling the case where
    the R-group is itself a ring (e.g. "cyclohexyl ethanoate") instead of assuming a plain chain. */
 function nameRGroup(atoms,bonds,adj,cAdj,rC,fromOId,funcInfo,esterOIds){
   if(rC==null) return 'alkyl';
   const myRing = findRings(atoms,bonds,adj).find(r=>r.includes(rC));
   if(myRing) return nameRingAsSubstituent(atoms,bonds,adj,cAdj,myRing,funcInfo,rC,fromOId).replace(/^\(|\)$/g,'');
-  const far = farthest(cAdj, rC, new Set());
+  const far = farthest(buildRingSafeCAdj(atoms,bonds,adj,cAdj), rC, new Set());
   return alkylName(far.dist+1) || 'alkyl';
 }
 
@@ -1163,7 +1182,7 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
           if(fi.type==='ESTER') rGroupC = fi.rGroupC;
           if(fi.type==='ACID_HALIDE') haloEl = fi.haloEl;
         } else {
-          label = nameBranch(atoms,bonds,adj,cAdj,n.id,rid,funcInfo,esterOIds);
+          label = nameBranch(atoms,bonds,adj,cAdj,n.id,rid,funcInfo,esterOIds,n.order===2);
         }
       }
       if(label) subs.push({pos:posOf[rid], ringAtomId:rid, label, atomId:n.id, rGroupC, haloEl, aminoNames});
@@ -1330,7 +1349,7 @@ function nameAromatic(atoms,bonds,adj,cAdj,ring,funcInfo){
     const ketoneC = principal.atomId;
     const kOther = adj[ketoneC].filter(x=> x.id!==principal.ringAtomId && atomById(atoms,x.id).el==='C');
     if(!kOther.length) return {name:'phenyl ketone', note:'Aryl ketone with no recognizable second chain.'};
-    const rFar = farthest(cAdj, kOther[0].id, new Set([ketoneC]));
+    const rFar = farthest(buildRingSafeCAdj(atoms,bonds,adj,cAdj), kOther[0].id, new Set([ketoneC]));
     const chainPath = [ketoneC, ...rFar.path];
     const dbl=[], trp=[];
     for(let i=0;i<chainPath.length-1;i++){
@@ -1486,7 +1505,7 @@ function nameAcyclic(atoms,bonds,adj){
       } else if(nfi && BRANCH_PREFIX_MAP[nfi.type]){
         prefixesRaw.push({loc, name:BRANCH_PREFIX_MAP[nfi.type]});
       } else {
-        prefixesRaw.push({loc, name: nameBranch(atoms,bonds,adj,cAdj,nb.id,cid,funcInfo,esterOIds)});
+        prefixesRaw.push({loc, name: nameBranch(atoms,bonds,adj,cAdj,nb.id,cid,funcInfo,esterOIds,nb.order===2)});
       }
     });
   });
@@ -1783,7 +1802,7 @@ function nameMonocyclic(atoms,bonds,adj,cAdjAll,ring,funcInfo){
         }
       }
       adj[rid].filter(nb=> !ringSet.has(nb.id) && atomById(atoms,nb.id).el==='C' && !(rinfo&&rinfo.exoCarbonId===nb.id)).forEach(nb=>{
-        raw.push({loc, name: nameBranch(atoms,bonds,adj,cAdjAll,nb.id,rid,funcInfo,esterOIds)});
+        raw.push({loc, name: nameBranch(atoms,bonds,adj,cAdjAll,nb.id,rid,funcInfo,esterOIds,nb.order===2)});
       });
     });
     return raw;
@@ -1945,6 +1964,307 @@ function ringHasDirectPrincipal(ring, adj, funcInfo){
   }
   return false;
 }
+
+/* ============================== SPIRO / BRIDGED-BICYCLIC DETECTION ============================== */
+/* An edge is a "bridge" (graph-theory sense) if it's on no cycle at all — Tarjan's algorithm.
+   Any atom touching a NON-bridge edge is part of some ring. This is more robust than findRings()
+   for working out which atoms belong to an interlocking (spiro/bicyclic) ring system. */
+function findBridgeEdges(atoms, bonds, adj){
+  let timer = 0;
+  const disc = {}, low = {};
+  const visited = new Set();
+  const bridgeIds = new Set();
+  function findBond(u,v){ return bonds.find(b=>(b.a===u&&b.b===v)||(b.a===v&&b.b===u)); }
+  function dfs(u, parent){
+    visited.add(u); disc[u]=low[u]=timer++;
+    adj[u].forEach(n=>{
+      if(n.id===parent) return;
+      if(visited.has(n.id)){
+        low[u] = Math.min(low[u], disc[n.id]);
+      } else {
+        dfs(n.id, u);
+        low[u] = Math.min(low[u], low[n.id]);
+        if(low[n.id] > disc[u]){
+          const bd = findBond(u, n.id);
+          if(bd) bridgeIds.add(bd.id);
+        }
+      }
+    });
+  }
+  atoms.forEach(a=>{ if(!visited.has(a.id)) dfs(a.id, null); });
+  return bridgeIds;
+}
+function getRingAtomSet(bonds, bridgeIds){
+  const ringAtoms = new Set();
+  bonds.forEach(b=>{ if(!bridgeIds.has(b.id)){ ringAtoms.add(b.a); ringAtoms.add(b.b); } });
+  return ringAtoms;
+}
+/* Classifies a (possibly interlocking) ring-atom set by degree pattern within the ring-only subgraph:
+   one degree-4 atom + rest degree-2 → spiro; two degree-3 atoms + rest degree-2 → bridged/fused
+   bicyclic (von Baeyer); anything else → too complex for this tool (tricyclic, dispiro, etc). */
+function classifyRingSystem(ringAtomSet, adj){
+  const deg = {};
+  ringAtomSet.forEach(id=>{ deg[id] = adj[id].filter(n=>ringAtomSet.has(n.id)).length; });
+  const highDeg = [...ringAtomSet].filter(id=>deg[id]>=3);
+  const othersOk = [...ringAtomSet].every(id=> highDeg.includes(id) || deg[id]===2);
+  if(!othersOk || highDeg.length===0) return {type:'complex'};
+  if(highDeg.length===1 && deg[highDeg[0]]===4) return {type:'spiro', center:highDeg[0]};
+  if(highDeg.length===2 && deg[highDeg[0]]===3 && deg[highDeg[1]]===3) return {type:'bicyclic', bridgeheads:highDeg};
+  return {type:'complex'};
+}
+
+/* ============================== SPIRO NAMING ============================== */
+function nameSpiro(atoms, bonds, adj, cAdjAll, ringAtomSet, center, funcInfo){
+  if(![...ringAtomSet].every(id=>atomById(atoms,id).el==='C')) return null;
+
+  // remove the spiro center; the rest of the ring atoms fall into exactly 2 separate "wings"
+  const others = [...ringAtomSet].filter(id=>id!==center);
+  const visited = new Set();
+  const components = [];
+  others.forEach(start=>{
+    if(visited.has(start)) return;
+    const comp = []; const stack=[start]; visited.add(start);
+    while(stack.length){
+      const u = stack.pop(); comp.push(u);
+      adj[u].forEach(n=>{
+        if(n.id===center) return;
+        if(ringAtomSet.has(n.id) && !visited.has(n.id)){ visited.add(n.id); stack.push(n.id); }
+      });
+    }
+    components.push(comp);
+  });
+  if(components.length!==2) return null;
+
+  let [wingA, wingB] = components;
+  if(wingA.length > wingB.length){ [wingA,wingB] = [wingB,wingA]; }
+
+  function ringBond(i,j){ return bonds.find(bd=>(bd.a===i&&bd.b===j)||(bd.a===j&&bd.b===i)); }
+  function orderWing(wing){
+    const wingSet = new Set(wing);
+    const centerNbrs = adj[center].filter(n=>wingSet.has(n.id)).map(n=>n.id);
+    if(centerNbrs.length!==2) return null;
+    if(wing.length===1) return [centerNbrs[0]];
+    const start = centerNbrs[0], end = centerNbrs[1];
+    const parent = {}; const seen=new Set([start]); const queue=[start];
+    while(queue.length){
+      const u = queue.shift();
+      if(u===end) break;
+      adj[u].filter(n=>wingSet.has(n.id) && !seen.has(n.id)).forEach(n=>{ seen.add(n.id); parent[n.id]=u; queue.push(n.id); });
+    }
+    if(!(end in parent) && start!==end) return null;
+    const path=[end]; let cur=end;
+    while(cur!==start){ cur=parent[cur]; path.push(cur); }
+    return path.reverse();
+  }
+  const wingASeq = orderWing(wingA), wingBSeq = orderWing(wingB);
+  if(!wingASeq || !wingBSeq) return null;
+  const aLen = wingASeq.length, bLen = wingBSeq.length;
+
+  const esterOIds = new Set(Object.values(funcInfo).filter(v=>v.type==='ESTER').map(v=>v.esterO));
+
+  // exocyclic principal-group / ketone info per ring atom (center can't bear one — its valence is full)
+  const ringInfo = {};
+  [...wingASeq, ...wingBSeq].forEach(rid=>{
+    if(funcInfo[rid] && funcInfo[rid].type==='KETONE'){ ringInfo[rid] = {exoType:'KETONE'}; return; }
+    adj[rid].forEach(nb=>{
+      if(ringAtomSet.has(nb.id)) return;
+      const at = atomById(atoms,nb.id);
+      const fi = funcInfo[nb.id];
+      if(at.el==='C' && fi && fi.type!=='KETONE' && fi.type!=='ANHYDRIDE'){
+        ringInfo[rid] = {exoType:fi.type, exoCarbonId:nb.id, rGroupC:fi.rGroupC, haloEl:fi.haloEl};
+      }
+    });
+  });
+  const PRIORITY = ['COOH','ESTER','ACID_HALIDE','AMIDE','NITRILE','CHO','KETONE'];
+  let principalType=null, principalAtoms=[];
+  for(const t of PRIORITY){
+    const found=[...wingASeq,...wingBSeq].filter(rid=>ringInfo[rid] && ringInfo[rid].exoType===t);
+    if(found.length){ principalType=t; principalAtoms=found; break; }
+  }
+  if(!principalType){
+    const ohA=[],nh2A=[],shA=[];
+    [...wingASeq,...wingBSeq].forEach(rid=>{
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,new Set(),esterOIds);
+      if(s.oh) ohA.push(rid); if(s.amino) nh2A.push(rid); if(s.sh) shA.push(rid);
+    });
+    if(ohA.length){ principalType='OH_RING'; principalAtoms=ohA; }
+    else if(nh2A.length){ principalType='NH2_RING'; principalAtoms=nh2A; }
+    else if(shA.length){ principalType='SH_RING'; principalAtoms=shA; }
+  }
+
+  function buildSeq(wA,wB,flipA,flipB){
+    return [...(flipA?[...wA].reverse():wA), center, ...(flipB?[...wB].reverse():wB)];
+  }
+  function evalSeq(seq){
+    const posOf={}; seq.forEach((id,i)=>posOf[id]=i+1);
+    const dbl=[],trp=[];
+    for(let i=0;i<seq.length-1;i++){
+      const bd = ringBond(seq[i],seq[i+1]);
+      if(bd){ if(bd.order===2) dbl.push(i+1); if(bd.order===3) trp.push(i+1); }
+    }
+    const bdA = ringBond(seq[0], center);
+    if(bdA){ const loc=posOf[center]; if(bdA.order===2) dbl.push(loc); if(bdA.order===3) trp.push(loc); }
+    const bdB = ringBond(seq[seq.length-1], center);
+    if(bdB){ const loc=posOf[seq[seq.length-1]]; if(bdB.order===2) dbl.push(loc); if(bdB.order===3) trp.push(loc); }
+    dbl.sort((x,y)=>x-y); trp.sort((x,y)=>x-y);
+    const principalLocs = principalAtoms.map(id=>posOf[id]).sort((x,y)=>x-y);
+    const subLocs = [];
+    seq.forEach(rid=>{
+      if(rid===center) return;
+      const loc = posOf[rid];
+      const rinfo = ringInfo[rid];
+      const skip = new Set(); if(rinfo && rinfo.exoCarbonId) skip.add(rinfo.exoCarbonId);
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,skip,esterOIds);
+      const isPrincipalHere = principalType && principalAtoms.includes(rid);
+      if(s.oh && !(principalType==='OH_RING' && isPrincipalHere)) subLocs.push(loc);
+      if(s.amino && !(principalType==='NH2_RING' && isPrincipalHere)) subLocs.push(loc);
+      if(s.sh && !(principalType==='SH_RING' && isPrincipalHere)) subLocs.push(loc);
+      if(s.nitro) subLocs.push(loc);
+      s.halogens.forEach(()=>subLocs.push(loc)); s.alkoxy.forEach(()=>subLocs.push(loc));
+      if(rinfo && rinfo.exoType && rinfo.exoType!==principalType) subLocs.push(loc);
+      adj[rid].filter(nb=>!ringAtomSet.has(nb.id) && atomById(atoms,nb.id).el==='C' && !(rinfo&&rinfo.exoCarbonId===nb.id)).forEach(()=>subLocs.push(loc));
+    });
+    subLocs.sort((x,y)=>x-y);
+    return {seq,posOf,dbl,trp,unsat:[...dbl,...trp].sort((x,y)=>x-y),principalLocs,subLocs};
+  }
+
+  let candidates = [];
+  const pairs = (aLen===bLen) ? [[wingASeq,wingBSeq],[wingBSeq,wingASeq]] : [[wingASeq,wingBSeq]];
+  pairs.forEach(([wA,wB])=>{
+    [false,true].forEach(flipA=> [false,true].forEach(flipB=>{
+      candidates.push(evalSeq(buildSeq(wA,wB,flipA,flipB)));
+    }));
+  });
+  function filterBest(list,key){
+    let best=null; list.forEach(c=>{ if(best===null||compareLocantArr(c[key],best)<0) best=c[key]; });
+    return list.filter(c=>compareLocantArr(c[key],best)===0);
+  }
+  candidates = filterBest(candidates,'principalLocs');
+  candidates = filterBest(candidates,'unsat');
+  candidates = filterBest(candidates,'subLocs');
+  let usedAlpha = false;
+  function buildPrefixesFor(seq, posOf){
+    const raw = [];
+    seq.forEach(rid=>{
+      if(rid===center) return;
+      const loc = posOf[rid];
+      const rinfo = ringInfo[rid];
+      const skip = new Set(); if(rinfo && rinfo.exoCarbonId) skip.add(rinfo.exoCarbonId);
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,skip,esterOIds);
+      const isPrincipalHere = principalType && principalAtoms.includes(rid);
+      if(s.oh && !(principalType==='OH_RING' && isPrincipalHere)) raw.push({loc,name:'hydroxy'});
+      if(s.amino && !(principalType==='NH2_RING' && isPrincipalHere)) raw.push({loc,name: aminoPrefixName(atoms,bonds,adj,cAdjAll,s.aminoNId,rid,funcInfo,esterOIds)});
+      if(s.sh && !(principalType==='SH_RING' && isPrincipalHere)) raw.push({loc,name:'sulfanyl'});
+      if(s.nitro) raw.push({loc,name:'nitro'});
+      s.halogens.forEach(h=>raw.push({loc,name:SUBST_PREFIX[h]}));
+      s.alkoxy.forEach(nm=>raw.push({loc,name:nm}));
+      if(rinfo && rinfo.exoType && rinfo.exoType!==principalType){
+        const map = {COOH:'carboxy', CHO:'formyl', NITRILE:'cyano', KETONE:'oxo'};
+        if(rinfo.exoType==='ESTER'){
+          const eOId = rinfo.exoCarbonId!=null ? funcInfo[rinfo.exoCarbonId].esterO : null;
+          raw.push({loc, name:`(${nameRGroup(atoms,bonds,adj,cAdjAll,rinfo.rGroupC,eOId,funcInfo,esterOIds)}oxycarbonyl)`});
+        } else if(rinfo.exoType==='ACID_HALIDE'){
+          raw.push({loc, name:`(${SUBST_PREFIX[rinfo.haloEl]||'halo'}carbonyl)`});
+        } else if(rinfo.exoType==='AMIDE'){
+          const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdjAll,funcInfo[rinfo.exoCarbonId].nId,rinfo.exoCarbonId,funcInfo,esterOIds);
+          raw.push({loc, name: aNames.length ? `(${aminoNParentPrefix(aNames)}carbamoyl)` : 'carbamoyl'});
+        } else if(map[rinfo.exoType]){ raw.push({loc, name:map[rinfo.exoType]}); }
+      }
+      adj[rid].filter(nb=>!ringAtomSet.has(nb.id) && atomById(atoms,nb.id).el==='C' && !(rinfo&&rinfo.exoCarbonId===nb.id)).forEach(nb=>{
+        raw.push({loc, name: nameBranch(atoms,bonds,adj,cAdjAll,nb.id,rid,funcInfo,esterOIds,nb.order===2)});
+      });
+    });
+    return raw;
+  }
+  function alphaScoreOf(raw){
+    const grouped={}; raw.forEach(p=>{ grouped[p.name]=grouped[p.name]||[]; grouped[p.name].push(p.loc); });
+    const score=[]; sortedByAlpha(Object.keys(grouped)).forEach(nm=>grouped[nm].sort((x,y)=>x-y).forEach(l=>score.push(l)));
+    return score;
+  }
+  if(candidates.length>1){
+    usedAlpha = true;
+    candidates.forEach(c=>{ c.namedPrefixes = buildPrefixesFor(c.seq,c.posOf); c.alphaScore = alphaScoreOf(c.namedPrefixes); });
+    candidates = filterBest(candidates,'alphaScore');
+  }
+  const chosen = candidates[0];
+  const prefixesRaw = chosen.namedPrefixes || buildPrefixesFor(chosen.seq, chosen.posOf);
+
+  const total = aLen+bLen+1;
+  let stem = `spiro[${aLen}.${bLen}]${buildUnsaturatedStem(total, chosen.dbl, chosen.trp)}`;
+  let suffixStr='', esterPrefixText='', aminePrefixText='';
+  const HALWORD = {F:'carbonyl fluoride',Cl:'carbonyl chloride',Br:'carbonyl bromide',I:'carbonyl iodide'};
+  if(principalType==='COOH'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxylic acid'); }
+  else if(principalType==='ESTER'){
+    suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxylate');
+    const rC = ringInfo[principalAtoms[0]] && ringInfo[principalAtoms[0]].rGroupC;
+    const exoC = ringInfo[principalAtoms[0]] && ringInfo[principalAtoms[0]].exoCarbonId;
+    const eOId = exoC!=null ? funcInfo[exoC].esterO : null;
+    if(rC){ esterPrefixText = nameRGroup(atoms,bonds,adj,cAdjAll,rC,eOId,funcInfo,esterOIds) + ' '; }
+  }
+  else if(principalType==='ACID_HALIDE'){
+    const haloEl = ringInfo[principalAtoms[0]].haloEl;
+    suffixStr = buildRingSuffix(chosen.principalLocs, HALWORD[haloEl]||'carbonyl halide');
+  }
+  else if(principalType==='AMIDE'){
+    suffixStr = buildRingSuffix(chosen.principalLocs, 'carboxamide');
+    const exoC0 = ringInfo[principalAtoms[0]] && ringInfo[principalAtoms[0]].exoCarbonId;
+    if(exoC0!=null){
+      const aNames = aminoNSubstituentNames(atoms,bonds,adj,cAdjAll,funcInfo[exoC0].nId,exoC0,funcInfo,esterOIds);
+      if(aNames.length) aminePrefixText = aminoNParentPrefix(aNames);
+    }
+  }
+  else if(principalType==='NITRILE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carbonitrile'); }
+  else if(principalType==='CHO'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'carbaldehyde'); }
+  else if(principalType==='KETONE'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'one'); }
+  else if(principalType==='OH_RING'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'ol'); }
+  else if(principalType==='NH2_RING'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'amine'); }
+  else if(principalType==='SH_RING'){ suffixStr = buildRingSuffix(chosen.principalLocs, 'thiol'); }
+
+  if(suffixStr && startsWithVowel(suffixStr.replace(/^-[\d,]+-?/,'')) && /e$/.test(stem)){ stem = stem.slice(0,-1); }
+
+  const grouped = {};
+  prefixesRaw.forEach(p=>{ grouped[p.name]=grouped[p.name]||[]; grouped[p.name].push(p.loc); });
+  const prefixJoined = sortedByAlpha(Object.keys(grouped)).map(nm=>{
+    const locs = grouped[nm].sort((x,y)=>x-y);
+    const mult = locs.length>1?(MULT[locs.length]||''):'';
+    return `${locs.join(',')}-${mult}${nm}`;
+  }).join('-');
+  const joiner = (aminePrefixText && prefixJoined) ? '-' : '';
+  const core = `${esterPrefixText}${aminePrefixText}${joiner}${prefixJoined}${stem}${suffixStr}`;
+
+  const explain = [];
+  explain.push(`Two rings share exactly one atom — a spiro atom (degree 4 within the ring system). Removing it splits the rest into a ${aLen}-atom ring and a ${bLen}-atom ring.`);
+  explain.push(`Spiro compounds are named \`spiro[${aLen}.${bLen}]${(ALKANE[total]||total+'-carbon')+'ane'}\`: the two numbers (smaller ring first) go in brackets, and the base name uses the TOTAL atom count (${aLen}+${bLen}+1 = ${total}).`);
+  explain.push('Numbering starts at the ring atom next to the spiro center in the SMALLER ring, goes all the way around it, through the spiro center, then all the way around the larger ring.');
+  const PRINCIPAL_DESC = {
+    COOH:'a –COOH (carboxylic acid) group', ESTER:'an ester linkage', ACID_HALIDE:'an acid halide',
+    AMIDE:'an amide', NITRILE:'a nitrile', CHO:'an aldehyde (–CHO)', KETONE:'a ketone (ring C=O)',
+    OH_RING:'a hydroxyl (–OH)', NH2_RING:'an amine', SH_RING:'a thiol (–SH)'
+  };
+  if(principalType){
+    explain.push(`The ring system carries ${PRINCIPAL_DESC[principalType]} — the highest-priority group present — so numbering was additionally chosen to give it the lowest locant: \`${chosen.principalLocs.join(',')}\`.`);
+  } else {
+    explain.push('No functional group is attached, so this is a plain substituted spiro-hydrocarbon — no suffix beyond the spiro name itself.');
+  }
+  if(chosen.dbl.length || chosen.trp.length){
+    const parts=[]; if(chosen.dbl.length) parts.push(`double bond${chosen.dbl.length>1?'s':''} at \`${chosen.dbl.join(',')}\``);
+    if(chosen.trp.length) parts.push(`triple bond${chosen.trp.length>1?'s':''} at \`${chosen.trp.join(',')}\``);
+    explain.push(`Ring unsaturation gets the next-lowest locants: ${parts.join(' and ')}.`);
+  }
+  if(prefixesRaw.length){
+    sortedByAlpha(Object.keys(grouped)).forEach(nm=>{
+      const locs = grouped[nm].sort((x,y)=>x-y);
+      explain.push(`Substituent \`${nm}\` found at position${locs.length>1?'s':''} \`${locs.join(',')}\`.`);
+    });
+    if(usedAlpha && Object.keys(grouped).length>=2){
+      explain.push(`Multiple numbering directions were tied on locants, so the tie was broken alphabetically: \`${sortedByAlpha(Object.keys(grouped))[0]}\` gets the lower number.`);
+    }
+  }
+  explain.push(`Final name: \`${core}\`.`);
+
+  return {name: core, note:'Best-effort spiro nomenclature: smaller ring numbered first, lowest locants to the principal group, then unsaturation, then substituents.', explain};
+}
+
 function nameMolecule(atoms,bonds){
   if(atoms.length===0) return {name:'(nothing drawn yet)', note:''};
   const adj = adjacency(atoms,bonds);
@@ -1958,17 +2278,32 @@ function nameMolecule(atoms,bonds){
     if(anhydrideResult) return anhydrideResult;
   }
 
-  if(rings.length>1 && ringsShareAtoms(rings)){
-    return {name:'(polycyclic / multi-ring structure detected)', note:'Multiple rings share atoms here (fused, bridged, or spiro) — that kind of polycyclic nomenclature is not supported by this tool yet.'};
-  }
-
   const funcInfo = classify(atoms,bonds,adj);
+
+  if(rings.length>1 && ringsShareAtoms(rings)){
+    const bridgeIds = findBridgeEdges(atoms,bonds,adj);
+    const ringAtomSet = getRingAtomSet(bonds, bridgeIds);
+    const classification = classifyRingSystem(ringAtomSet, adj);
+    if(classification.type==='spiro'){
+      const result = nameSpiro(atoms,bonds,adj,cAdjAll,ringAtomSet,classification.center,funcInfo);
+      if(result) return result;
+    }
+    return {name:'(polycyclic / multi-ring structure detected)', note:'Multiple rings share atoms here (fused or bridged) — that kind of polycyclic nomenclature is not supported by this tool yet.'};
+  }
 
   if(rings.length>1){
     const candidateRing = rings.find(r=> ringHasDirectPrincipal(r,adj,funcInfo));
     if(candidateRing){
       const isArom = isBenzeneRing(candidateRing,atoms,bonds);
       return isArom ? nameAromatic(atoms,bonds,adj,cAdjAll,candidateRing,funcInfo) : nameMonocyclic(atoms,bonds,adj,cAdjAll,candidateRing,funcInfo);
+    }
+    const simplePrincipalRing = rings.find(r=> r.some(rid=>{
+      const s = substituentsOnCarbon(atoms,adj,cAdjAll,rid,new Set(),new Set());
+      return s.oh || s.amino || s.sh;
+    }));
+    if(simplePrincipalRing){
+      const isArom = isBenzeneRing(simplePrincipalRing,atoms,bonds);
+      return isArom ? nameAromatic(atoms,bonds,adj,cAdjAll,simplePrincipalRing,funcInfo) : nameMonocyclic(atoms,bonds,adj,cAdjAll,simplePrincipalRing,funcInfo);
     }
     const ringAtomSet = new Set(); rings.forEach(r=> r.forEach(id=>ringAtomSet.add(id)));
     const hasBackbone = atoms.some(a=> a.el==='C' && !ringAtomSet.has(a.id));
@@ -1980,6 +2315,22 @@ function nameMolecule(atoms,bonds){
       })[0];
       const isArom = isBenzeneRing(parentRing,atoms,bonds);
       return isArom ? nameAromatic(atoms,bonds,adj,cAdjAll,parentRing,funcInfo) : nameMonocyclic(atoms,bonds,adj,cAdjAll,parentRing,funcInfo);
+    }
+    // No functional group anywhere: compare the largest ring against the longest connecting/attached
+    // chain (same "bigger one wins as parent" rule as the single-ring case) before falling to nameAcyclic.
+    const largestRing = [...rings].sort((a,b)=> b.length-a.length)[0];
+    const chainOnlyCarbons = atoms.filter(a=>a.el==='C' && !ringAtomSet.has(a.id));
+    let longestChainLen = 0;
+    if(chainOnlyCarbons.length){
+      const safeCAdj = {};
+      chainOnlyCarbons.forEach(c=> safeCAdj[c.id] = cAdjAll[c.id].filter(n=>!ringAtomSet.has(n.id)));
+      const f1 = farthest(safeCAdj, chainOnlyCarbons[0].id, new Set());
+      const f2 = farthest(safeCAdj, f1.node, new Set());
+      longestChainLen = f2.dist+1;
+    }
+    if(largestRing.length >= longestChainLen){
+      const isArom = isBenzeneRing(largestRing,atoms,bonds);
+      return isArom ? nameAromatic(atoms,bonds,adj,cAdjAll,largestRing,funcInfo) : nameMonocyclic(atoms,bonds,adj,cAdjAll,largestRing,funcInfo);
     }
   }
 
@@ -2054,7 +2405,7 @@ async function restoreState(){
 function setSaveBadge(state){
   const el = document.getElementById('saveBadge');
   if(!el) return;
-  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ ourin', local:'○ ashish/ourin'};
+  const map = {saved:'● saved', saving:'○ saving…', unsaved:'○ ashish/ourin', local:'○ ashish/ourin'};
   el.textContent = map[state] || map.local;
 }
 
